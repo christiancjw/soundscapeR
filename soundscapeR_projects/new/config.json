@@ -1,0 +1,11 @@
+{
+  "project_name": "new",
+  "csv_path": "",
+  "index_columns": [],
+  "metadata_columns": [],
+  "filename_column": "",
+  "audio_root": "",
+  "audio_path_mode": "folder_structure",
+  "folder_structure": "{Site}/{Device}/{Date}",
+  "palettes": []
+}

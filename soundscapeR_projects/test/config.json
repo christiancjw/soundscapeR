@@ -1,0 +1,40 @@
+{
+  "project_name": "test",
+  "csv_path": "/Users/christianching/Documents/Projects/SoundscapeR/SoundscapeR_projects/test/raw_data/globalRL_singledevice_data.csv",
+  "index_columns": [
+    "HighAmplitudeIndex",
+    "AvgSnrOfActiveFrames",
+    "ClippingIndex",
+    "SptDensity",
+    "Ndsi",
+    "ThreeGramCount",
+    "EntropyOfCoVSpectrum",
+    "EntropyOfVarianceSpectrum",
+    "EntropyOfAverageSpectrum",
+    "TemporalEntropy",
+    "AcousticComplexity",
+    "LowFreqCover",
+    "MidFreqCover",
+    "SpectralCentroid",
+    "EventsPerSecond",
+    "Activity",
+    "Snr",
+    "BackgroundNoise",
+    "AvgSignalAmplitude",
+    "HighFreqCover",
+    "EntropyOfPeaksSpectrum",
+    "ClusterCount"
+  ],
+  "metadata_columns": [
+    "Site",
+    "Device",
+    "Strahler_Class",
+    "Deployment_Season",
+    "QBR_Class"
+  ],
+  "filename_column": "FileName",
+  "audio_root": "/Volumes/SSD Type II/Acoustics/CCMP_Riparian_Audio",
+  "audio_path_mode": "folder_structure",
+  "folder_structure": "{Site}/{Device}/{Date}",
+  "palettes": []
+}

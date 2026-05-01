@@ -4,11 +4,12 @@ library(dplyr)
 library(lubridate)
 library(stringr)
 library(shinyjs)
+library(jsonlite)
 
 ## Setup --------------------------------------------------------------------------------------
 ### Data Read in ------------------
 
-global_singledevice_RL    <- read.csv("projects/cardamom_riparian_acoustics/data/globalRL_singledevice_data.csv")
+global_singledevice_RL    <- read.csv("soundscapeR_projects/cardamom_riparian_acoustics/raw_data/globalRL_singledevice_data.csv")
 
 ### Store datasets in a named list ------------------
 datasets <- list(
@@ -154,3 +155,5 @@ minutes_to_label <- function(mins) {
   sprintf("%02d:%02d", mins %/% 60, mins %% 60)
 }
 
+# Null coalescing operator for strings
+`%||%` <- function(a, b) if (!is.null(a) && nchar(trimws(as.character(a))) > 0) a else b

@@ -1,203 +1,596 @@
 fluidPage(
   useShinyjs(),
+  
   tags$head(
     tags$script(src = "js/wavesurfer.min.js"),
     tags$script(src = "js/spectrogram.min.js"),
-    tags$style(HTML("#waveform { 
-                    width: 100% !important; 
-                    height: 100px !important; 
-                    margin-top: 10px; 
-                    border: 1px solid #ccc; 
-                    } 
-                    #spectrogram { 
-                    width: 100% !important; 
-                    height: 150px !important; 
-                    margin-top: 10px; 
-                    border: 1px solid #ccc; 
-                    } 
-                    #now_playing { 
-                    margin-top: 20px; 
-                    padding: 10px; 
-                    background-color: #f9f9f9; 
-                    border: 1px solid #ccc; 
-                    font-size: 14px; 
-                    width: 100%; 
-                    }")),
     tags$style(HTML("
-    .hidden { display: none; }
-    /* Style the time slider to be compact */
-    .time-slider .irs-grid-text { font-size: 9px; }
-  "))
+
+      body, html {
+        overflow-x: hidden;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      .app-wrapper {
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .sidebar {
+        width: 220px;
+        min-width: 220px;
+        flex-shrink: 0;
+        background: #f7f7f5;
+        border-right: 0.5px solid #e0e0dc;
+        display: flex;
+        flex-direction: column;
+        padding: 12px 10px;
+        transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease;
+        overflow-x: hidden;
+        overflow-y: auto;
+        position: relative;
+        z-index: 20;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        min-width: 0;
+        padding: 0;
+      }
+
+      .sidebar-toggle {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        left: 220px;
+        width: 14px;
+        height: 48px;
+        flex-shrink: 0;
+        background: #f7f7f5;
+        border: 0.5px solid #e0e0dc;
+        border-left: none;
+        border-radius: 0 6px 6px 0;
+        cursor: pointer;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: #999;
+        transition: left 0.2s ease;
+        user-select: none;
+      }
+
+      .sidebar-toggle.collapsed { left: 0; }
+
+      .main-panel {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 12px;
+        gap: 8px;
+        height: 100vh;
+        box-sizing: border-box;
+      }
+
+      #main_setup {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+      }
+
+      #main_analysis {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .analysis-bottom-row {
+        display: flex;
+        gap: 10px;
+        height: 260px;
+        flex-shrink: 0;
+      }
+
+      .analysis-left-col {
+        width: 260px;
+        min-width: 260px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .analysis-right-col {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .sidebar-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 10px;
+      }
+
+      .sidebar-tab {
+        flex: 1;
+        font-size: 11px;
+        padding: 4px 0;
+        text-align: center;
+        border-radius: 5px;
+        border: 0.5px solid #d0d0cc;
+        background: white;
+        color: #666;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .sidebar-tab.active {
+        background: #e8f0fe;
+        color: #1a56db;
+        border-color: #b3c8f7;
+        font-weight: 500;
+      }
+
+      .disabled-tab {
+        opacity: 0.4;
+        cursor: not-allowed !important;
+        pointer-events: none;
+      }
+
+      .s-label {
+        font-size: 10px;
+        color: #aaa;
+        letter-spacing: 0.04em;
+        margin-top: 8px;
+        margin-bottom: 3px;
+      }
+
+      .sidebar .form-group { margin-bottom: 4px; }
+
+      .btn-compute {
+        width: 100%;
+        margin-top: auto;
+        background: #1a56db;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 0;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .setup-card {
+        background: #f7f7f5;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+      }
+
+      .setup-card-title {
+        font-size: 12px;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 10px;
+      }
+
+      .now-playing {
+        background: #f7f7f5;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #444;
+        position: relative;
+        line-height: 1.6;
+        overflow-y: auto;
+        flex-shrink: 0;
+        max-height: 120px;
+      }
+
+      .pca-summary-box {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        background: #f7f7f5;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 11px;
+      }
+
+      #waveform {
+        width: 100%;
+        flex: 1;
+        min-height: 60px;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      #spectrogram {
+        width: 100%;
+        flex: 2;
+        min-height: 80px;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+
+      /* ── Index selector ───────────────────────────────────────────────── */
+      .index-selector-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 3px;
+      }
+
+      .index-selector-box {
+        background: white;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 6px;
+        padding: 5px 6px;
+        max-height: 130px;
+        overflow-y: auto;
+      }
+
+      .index-selector-box .shiny-input-checkboxgroup > .checkbox {
+        margin: 1px 0 !important;
+      }
+
+      .index-selector-box label {
+        font-size: 10px !important;
+        color: #444;
+        font-weight: 400 !important;
+      }
+
+      .index-selector-box input[type='checkbox'] {
+        accent-color: #1a56db;
+        width: 11px;
+        height: 11px;
+      }
+
+      /* ── Metadata checkbox filters ────────────────────────────────────── */
+      .checkbox-filter-list {
+        background: white;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 6px;
+        padding: 4px 6px;
+        max-height: 100px;
+        overflow-y: auto;
+        margin-bottom: 4px;
+      }
+
+      .checkbox-filter-list .shiny-input-checkboxgroup > .checkbox {
+        margin: 1px 0 !important;
+      }
+
+      .checkbox-filter-list label {
+        font-size: 10px !important;
+        color: #444;
+        font-weight: 400 !important;
+      }
+
+      .checkbox-filter-list input[type='checkbox'] {
+        accent-color: #1a56db;
+        width: 11px;
+        height: 11px;
+      }
+
+      /* ── Date range pickers ───────────────────────────────────────────── */
+      .date-range-row {
+        display: flex;
+        gap: 6px;
+      }
+
+      .date-range-row .form-group {
+        flex: 1;
+        margin-bottom: 0 !important;
+      }
+
+      .date-range-row input[type='date'] {
+        font-size: 10px !important;
+        padding: 3px 5px !important;
+        height: 26px !important;
+        border: 0.5px solid #e0e0dc !important;
+        border-radius: 4px !important;
+        width: 100% !important;
+      }
+
+      .date-range-row label {
+        font-size: 9px !important;
+        color: #aaa !important;
+        margin-bottom: 2px !important;
+      }
+
+      /* ── Select all / none links ──────────────────────────────────────── */
+      .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+        margin-bottom: 2px;
+      }
+
+      .filter-header-links {
+        display: flex;
+        gap: 6px;
+      }
+
+      .filter-link {
+        font-size: 9px;
+        color: #1a56db;
+        cursor: pointer;
+        text-decoration: none;
+        user-select: none;
+      }
+
+      .filter-link.none { color: #999; }
+
+      .hidden { display: none; }
+      .time-slider .irs-grid-text { font-size: 9px; }
+    "))
   ),
   
-  # Main plot row
-  fluidRow(
-    column(12, 
-           div(style = "position: absolute; top: 10px; left: 10px; 
-            background: rgba(255,255,255,0.85);
-            padding: 10px; border-radius: 8px; 
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2); 
-            z-index: 10; width: 270px;",
-               
-               actionButton("toggle_controls", label = NULL,
-                            style = "
-                   width: 100%; 
-                   height: 8px; 
-                   padding: 0; 
-                   margin-bottom: 5px;
-                   background-color: #002FA7; 
-                   border: none;
-                   border-radius: 4px;
-                   cursor: pointer;
-                 "),
-               
-               div(id = "controls_panel",
-                   
-                   # Select Dataframe
-                   div("Select Dataframe:", style = "font-size: 12px; margin-bottom: 2px;"),
-                   selectInput("selected_dataframe", label = NULL, choices = dataframes, selected = dataframes[1]),
-                   
-                   # Recording Period
-                   div("Recording Period:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   selectInput("selected_period", label = NULL, choices = names(recording_periods), selected = recording_periods),
-                   
-                   # Season Filter
-                   div("Season:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   selectInput("selected_season", label = NULL,
-                               choices = c("All", "Monsoon", "Dry"),
-                               selected = "All"),
-                   
-                   # ── NEW: Time Range Slider ──────────────────────────────
-                   div("Time Range:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   # Values are minutes since midnight (0–1410 in 30-min steps)
-                   sliderInput(
-                     "time_range",
-                     label    = NULL,
-                     min      = 0,
-                     max      = 1410,        # 23:30
-                     value    = c(0, 1410),  # default: full day
-                     step     = 30,
-                     ticks    = FALSE,
-                     # Custom tick labels via post/pre not available directly;
-                     # we use a JS hook below to show HH:MM in the bubble
-                     animate  = FALSE
-                   ),
-                   # Live label showing selected range in HH:MM
-                   uiOutput("time_range_label"),
-                   # ────────────────────────────────────────────────────────
-                   
-                   # Select Site(s)
-                   div("Select Site(s):", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   selectInput("selected_sites", label = NULL, choices = sampling_sites, 
-                               selected = sampling_sites, multiple = TRUE),
-                   
-                   # Acoustic Indices
-                   div("Acoustic Indices:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   selectInput("selected_indices", label = NULL, choices = acoustic_indices, multiple = TRUE),
-                   
-                   # Colour By
-                   div("Colour By:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-                   selectInput("color_by", label = NULL, choices = c("Site", "Month", "Season", "QBR_Class", "Strahler_Class"), selected = "Site"),
-                   
-                   actionButton("compute", "Compute", class = "btn-primary")
-               )
-           ),
-           plotlyOutput("main_plot", height = "600px")
-    )
-  ),
-  
-  # PCA Popup panel
-  div(style = "position: absolute; top: 10px; left: 300px; 
-           background: rgba(255,255,255,0.85);
-           padding: 10px; border-radius: 8px; 
-           box-shadow: 0 2px 6px rgba(0,0,0,0.2); 
-           z-index: 10; width: 250px;",
+  div(class = "app-wrapper",
       
-      conditionalPanel(
-        condition = "input.selected_indices != null && input.selected_indices.length > 3",
-        actionButton("toggle_pca_controls", label = NULL,
-                     style = "
-                     width: 100%; height: 8px; padding: 0; margin-bottom: 5px;
-                     background-color: #002FA7; border: none;
-                     border-radius: 4px; cursor: pointer;"),
-        
-        div(id = "pca_controls_panel",
-            div("Plot Type:", style = "font-size: 12px; margin-bottom: 2px;"),
-            selectInput("plot_type", label = NULL, 
-                        choices = c("Scatter 3D", "Scatter 2D", "Diel Line 2D", "Diel Line 3D", "Boxplot"), 
-                        selected = "Scatter 3D"),
-            
-            div("PCA Axes:", style = "font-size: 12px; margin-bottom: 2px; margin-top: 5px;"),
-            
-            conditionalPanel(
-              condition = "input.plot_type == 'Scatter 3D'",
-              selectInput("pca_x", "X-axis", choices = paste0("PC", 1:10), selected = "PC1"),
-              selectInput("pca_y", "Y-axis", choices = paste0("PC", 1:10), selected = "PC2"),
-              selectInput("pca_z", "Z-axis", choices = paste0("PC", 1:10), selected = "PC3")
-            ),
-            
-            conditionalPanel(
-              condition = "input.plot_type == 'Scatter 2D'",
-              selectInput("pca_x", "X-axis", choices = paste0("PC", 1:10), selected = "PC1"),
-              selectInput("pca_y", "Y-axis", choices = paste0("PC", 1:10), selected = "PC2")
-            ),
-            
-            conditionalPanel(
-              condition = "input.plot_type == 'Diel Line 2D'",
-              selectInput("pca_y", "Y-axis (PC)", choices = paste0("PC", 1:10), selected = "PC1")
-            ),
-            
-            conditionalPanel(
-              condition = "input.plot_type == 'Diel Line 3D'",
-              selectInput("pca_y", "Y-axis (PC)", choices = paste0("PC", 1:10), selected = "PC1"),
-              selectInput("pca_z", "Z-axis (PC)", choices = paste0("PC", 1:10), selected = "PC2")
-            ),
-            
-            conditionalPanel(
-              condition = "input.plot_type == 'Boxplot'",
-              selectInput("pca_y", "PC for Boxplot", choices = paste0("PC", 1:10), selected = "PC1")
-            ),
-            
-            actionButton("compute", label = NULL,
-                         style = "
-                   width: 100%; 
-                   height: 8px; 
-                   padding: 0; 
-                   margin-bottom: 5px;
-                   background-color: #002FA7; 
-                   border: none;
-                   border-radius: 4px;
-                   cursor: pointer;
-                 ")
-        )
+      # ── Sidebar ───────────────────────────────────────────────────────────────
+      div(id = "sidebar", class = "sidebar",
+          
+          div(class = "sidebar-tabs",
+              div(id = "tab_setup", class = "sidebar-tab active", "Setup",
+                  onclick = "switchTab('setup')"),
+              div(id = "tab_analysis", class = "sidebar-tab disabled-tab", "Analysis",
+                  onclick = "if(!this.classList.contains('disabled-tab')) switchTab('analysis')")
+          ),
+          
+          # ── Setup tab ──────────────────────────────────────────────────────────
+          div(id = "panel_setup",
+              projectUI("project")
+          ),
+          
+          # ── Analysis tab ────────────────────────────────────────────────────────
+          div(id = "panel_analysis", style = "display: none;",
+              
+              # Indices — checkbox group with select all/none
+              div(class = "filter-header",
+                  span(class = "s-label", style = "margin: 0;", "Acoustic indices"),
+                  div(class = "filter-header-links",
+                      tags$a(class = "filter-link",
+                             onclick = "Shiny.setInputValue('indices_select_all',
+                              Math.random())",
+                             "all"),
+                      tags$a(class = "filter-link none",
+                             onclick = "Shiny.setInputValue('indices_deselect_all',
+                              Math.random())",
+                             "none")
+                  )
+              ),
+              div(class = "index-selector-box",
+                  checkboxGroupInput("selected_indices", label = NULL,
+                                     choices = NULL, selected = NULL,
+                                     width = "100%")
+              ),
+              
+              # Date range
+              div(class = "s-label", "Date range"),
+              div(class = "date-range-row",
+                  dateInput("date_from", label = "From",
+                            value = Sys.Date() - 365,
+                            width = "100%"),
+                  dateInput("date_to", label = "To",
+                            value = Sys.Date(),
+                            width = "100%")
+              ),
+              
+              # Time range
+              div(class = "s-label", "Time range"),
+              sliderInput("time_range", label = NULL,
+                          min = 0, max = 1410, value = c(0, 1410),
+                          step = 30, ticks = FALSE),
+              uiOutput("time_range_label"),
+              
+              # Metadata filters — rendered dynamically
+              uiOutput("dynamic_meta_filters"),
+              
+              # Colour by
+              div(class = "s-label", "Colour by"),
+              selectInput("color_by", label = NULL,
+                          choices = NULL, width = "100%"),
+              
+              # Plot type
+              div(class = "s-label", "Plot type"),
+              selectInput("plot_type", label = NULL,
+                          choices = c("Scatter 3D", "Scatter 2D",
+                                      "Diel Line 2D", "Diel Line 3D",
+                                      "Boxplot"),
+                          selected = "Scatter 3D", width = "100%"),
+              
+              conditionalPanel(
+                condition = "input.plot_type == 'Scatter 3D'",
+                div(class = "s-label", "PCA axes"),
+                selectInput("pca_x", "X", choices = paste0("PC", 1:10),
+                            selected = "PC1", width = "100%"),
+                selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                            selected = "PC2", width = "100%"),
+                selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
+                            selected = "PC3", width = "100%")
+              ),
+              conditionalPanel(
+                condition = "input.plot_type == 'Scatter 2D'",
+                div(class = "s-label", "PCA axes"),
+                selectInput("pca_x", "X", choices = paste0("PC", 1:10),
+                            selected = "PC1", width = "100%"),
+                selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                            selected = "PC2", width = "100%")
+              ),
+              conditionalPanel(
+                condition = "input.plot_type == 'Diel Line 2D' ||
+                       input.plot_type == 'Diel Line 3D' ||
+                       input.plot_type == 'Boxplot'",
+                div(class = "s-label", "PC (Y axis)"),
+                selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                            selected = "PC1", width = "100%")
+              ),
+              conditionalPanel(
+                condition = "input.plot_type == 'Diel Line 3D'",
+                selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
+                            selected = "PC2", width = "100%")
+              ),
+              
+              actionButton("compute", "Compute",
+                           class = "btn-compute",
+                           style = "margin-top: 12px;")
+          )
+      ),
+      
+      # ── Collapse toggle ───────────────────────────────────────────────────────
+      div(id = "sidebar_toggle", class = "sidebar-toggle", "‹",
+          onclick = "toggleSidebar()"),
+      
+      # ── Main panel ────────────────────────────────────────────────────────────
+      div(class = "main-panel",
+          
+          div(id = "main_setup",
+              setupUI("setup")
+          ),
+          
+          div(id = "main_analysis", style = "display: none;",
+              
+              uiOutput("analysis_lock_msg"),
+              
+              div(style = "flex: 1; min-height: 0;",
+                  plotlyOutput("main_plot", height = "100%")
+              ),
+              
+              div(class = "analysis-bottom-row",
+                  
+                  div(class = "analysis-left-col",
+                      div(class = "now-playing",
+                          span(id = "now_playing_text",
+                               style = "font-size: 11px;", "Now playing: —"),
+                          div(id = "buttons_container", class = "hidden",
+                              style = "position: absolute; top: 8px; right: 8px;
+                           display: flex; gap: 4px;",
+                              actionButton("play_pause", label = NULL,
+                                           icon = icon("play"),
+                                           class = "btn-primary btn-sm"),
+                              actionButton("open_file", label = NULL,
+                                           icon = icon("folder-open"),
+                                           class = "btn-secondary btn-sm")
+                          )
+                      ),
+                      div(class = "pca-summary-box",
+                          div(style = "display: flex; justify-content: space-between;
+                           align-items: center; margin-bottom: 6px;",
+                              span(style = "font-size: 10px; color: #aaa;
+                              letter-spacing: 0.04em;", "PCA summary"),
+                              downloadButton("download_pca", "Export",
+                                             class = "btn-sm",
+                                             style = "font-size: 9px; padding: 2px 8px;
+                                        height: auto; line-height: 1.4;")
+                          ),
+                          verbatimTextOutput("pca_summary")
+                      )
+                  ),
+                  
+                  div(class = "analysis-right-col",
+                      div(id = "waveform"),
+                      div(id = "spectrogram")
+                  )
+              )
+          )
       )
   ),
   
-  # Bottom row
-  fluidRow(
-    column(4, 
-           div(id = "now_playing",
-               span(id = "now_playing_text", "Now Playing: "),
-               div(id = "buttons_container", class = "hidden",
-                   style = "position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column;",
-                   actionButton("play_pause", label = NULL, icon = icon("play"), class = "btn-primary btn-sm", style = "margin-bottom: 5px;"),
-                   actionButton("open_file", label = NULL, icon = icon("folder-open"), class = "btn-secondary btn-sm")
-               ),
-               style = "position: relative; padding: 10px; background-color: #f9f9f9; 
-               border: 1px solid #ccc; font-size: 14px; width: 100%; border-radius: 8px;"
-           ), 
-           div(style = "height: 200px; overflow-y: auto; padding: 10px; border-radius: 8px;", verbatimTextOutput("pca_summary")),
-           div(
-             id = "pca_results_panel",
-             style = "margin-top: 15px;",
-             h4("PCA Results"),
-             verbatimTextOutput("pca_results"),
-             downloadButton("download_pca", "Export PCA Results")
-           ),
-    ),
-    column(8, 
-           div(id = "waveform"),
-           div(id = "spectrogram")
-    )
-  )
+  # ── JavaScript ────────────────────────────────────────────────────────────────
+  tags$script(HTML("
+
+    function switchTab(tab) {
+      document.getElementById('tab_setup').classList.remove('active');
+      document.getElementById('tab_analysis').classList.remove('active');
+      document.getElementById('tab_' + tab).classList.add('active');
+
+      document.getElementById('panel_setup').style.display =
+        tab === 'setup' ? 'block' : 'none';
+      document.getElementById('panel_analysis').style.display =
+        tab === 'analysis' ? 'block' : 'none';
+
+      document.getElementById('main_setup').style.display =
+        tab === 'setup' ? 'block' : 'none';
+      document.getElementById('main_analysis').style.display =
+        tab === 'analysis' ? 'flex' : 'none';
+    }
+
+    function toggleSidebar() {
+      var sidebar = document.getElementById('sidebar');
+      var toggle  = document.getElementById('sidebar_toggle');
+      var collapsed = sidebar.classList.toggle('collapsed');
+      toggle.classList.toggle('collapsed', collapsed);
+      toggle.innerHTML = collapsed ? '›' : '‹';
+    }
+
+    $(document).ready(function() {
+
+      var wavesurfer = WaveSurfer.create({
+        container: '#waveform',
+        waveColor: '#a78bfa',
+        progressColor: '#7c3aed',
+        cursorColor: '#333',
+        height: 80,
+        sampleRate: 44100,
+        plugins: [
+          WaveSurfer.Spectrogram.create({
+            container: '#spectrogram',
+            fftSamples: 512,
+            labels: true,
+            frequencyMax: 22050
+          })
+        ]
+      });
+
+      var isPlaying = false;
+
+      $('#play_pause').click(function() {
+        isPlaying ? wavesurfer.pause() : wavesurfer.play();
+        isPlaying = !isPlaying;
+      });
+
+      Shiny.addCustomMessageHandler('update_audio', function(msg) {
+        wavesurfer.load(msg.src);
+        wavesurfer.on('ready', function() {
+          wavesurfer.play();
+          isPlaying = true;
+        });
+      });
+
+      Shiny.addCustomMessageHandler('update_now_playing', function(msg) {
+        $('#now_playing_text').html(msg.info);
+        $('#buttons_container').removeClass('hidden');
+      });
+
+      Shiny.addCustomMessageHandler('set_analysis_enabled', function(msg) {
+        var tab = document.getElementById('tab_analysis');
+        if (msg.enabled) {
+          tab.classList.remove('disabled-tab');
+        } else {
+          tab.classList.add('disabled-tab');
+        }
+      });
+
+    });
+  "))
 )
