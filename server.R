@@ -20,9 +20,13 @@ function(input, output, session) {
   cache_meta_cols      <- reactiveVal(character(0))
   cache_filter_choices <- reactiveVal(list())
   cache_audio_root     <- reactiveVal("")
+  cache_audio_mode     <- reactiveVal("folder_structure")
+  cache_folder_pattern <- reactiveVal("{Site}/{Device}/{Date}")
+  cache_path_col       <- reactiveVal("")
+  cache_filename_col   <- reactiveVal("")
   cache_date_col       <- reactiveVal("Date")
   cache_time_col       <- reactiveVal("Time")
-  cache_date_range     <- reactiveVal(NULL)  # c(min_int, max_int)
+  cache_date_range     <- reactiveVal(NULL)
   cache_applied        <- reactiveVal(FALSE)
   
   observeEvent(app_data(), {
@@ -46,8 +50,11 @@ function(input, output, session) {
     cache_meta_cols(ad$meta_cols)
     cache_date_col(ad$date_col)
     cache_time_col(ad$time_col)
+    cache_audio_mode(ad$audio_mode)
+    cache_folder_pattern(ad$folder_pattern)
+    cache_path_col(ad$path_col)
+    cache_filename_col(ad$filename_col)
     
-    # Compute date range from data for the date pickers
     date_col <- ad$date_col
     if (date_col %in% colnames(ad$df)) {
       dates    <- as.integer(ad$df[[date_col]])
@@ -55,32 +62,25 @@ function(input, output, session) {
       min_date <- as.Date(as.character(min(dates)), format = "%Y%m%d")
       max_date <- as.Date(as.character(max(dates)), format = "%Y%m%d")
       cache_date_range(c(min_date, max_date))
-      
       updateDateInput(session, "date_from", value = min_date,
                       min = min_date, max = max_date)
       updateDateInput(session, "date_to",   value = max_date,
                       min = min_date, max = max_date)
     }
     
-    # Build filter choices — skip date and time cols
-    filter_cols <- ad$meta_cols[
-      !ad$meta_cols %in% c(ad$date_col, ad$time_col)
-    ]
+    filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
     choices <- lapply(filter_cols, function(col) {
       vals <- sort(unique(as.character(ad$df[[col]])))
-      if (length(vals) > 200) return(NULL)  # skip huge columns
+      if (length(vals) > 200) return(NULL)
       vals
     })
     names(choices) <- filter_cols
     choices <- Filter(Negate(is.null), choices)
     cache_filter_choices(choices)
     
-    # Populate index selector
     updateCheckboxGroupInput(session, "selected_indices",
                              choices  = ad$index_cols,
                              selected = ad$index_cols)
-    
-    # Colour by
     updateSelectInput(session, "color_by",
                       choices  = ad$meta_cols,
                       selected = ad$meta_cols[1])
@@ -112,7 +112,6 @@ function(input, output, session) {
   output$dynamic_meta_filters <- renderUI({
     choices <- cache_filter_choices()
     if (length(choices) == 0) return(NULL)
-    
     lapply(names(choices), function(col) {
       vals <- choices[[col]]
       tagList(
@@ -148,21 +147,16 @@ function(input, output, session) {
   outputOptions(output, "time_range_label",      suspendWhenHidden = FALSE)
   outputOptions(output, "analysis_lock_msg",     suspendWhenHidden = FALSE)
   
-  # ── Select all / none observers for metadata filters ──────────────────────────
+  # ── Select all / none for metadata filters ────────────────────────────────────
   observe({
     choices <- cache_filter_choices()
     lapply(names(choices), function(col) {
-      # Select all
       observeEvent(input[[paste0("select_all_", col)]], {
-        updateCheckboxGroupInput(session,
-                                 paste0("meta_filter_", col),
+        updateCheckboxGroupInput(session, paste0("meta_filter_", col),
                                  selected = choices[[col]])
       }, ignoreInit = TRUE)
-      
-      # Deselect all
       observeEvent(input[[paste0("deselect_all_", col)]], {
-        updateCheckboxGroupInput(session,
-                                 paste0("meta_filter_", col),
+        updateCheckboxGroupInput(session, paste0("meta_filter_", col),
                                  selected = character(0))
       }, ignoreInit = TRUE)
     })
@@ -184,15 +178,14 @@ function(input, output, session) {
     if (!time_col %in% colnames(df)) return(df)
     t_start <- minutes_to_hhmmss(range_mins[1])
     t_end   <- minutes_to_hhmmss(range_mins[2])
-    if (t_start <= t_end) {
+    if (t_start <= t_end)
       subset(df, df[[time_col]] >= t_start & df[[time_col]] <= t_end)
-    } else {
+    else
       subset(df, df[[time_col]] >= t_start | df[[time_col]] <= t_end)
-    }
   }
   
   apply_date_filter <- function(df) {
-    date_col <- cache_date_col()
+    date_col   <- cache_date_col()
     if (!date_col %in% colnames(df)) return(df)
     date_range <- cache_date_range()
     if (is.null(date_range)) return(df)
@@ -212,37 +205,112 @@ function(input, output, session) {
     if (length(choices) == 0) return(df)
     for (col in names(choices)) {
       val <- input[[paste0("meta_filter_", col)]]
-      # NULL or empty means nothing selected — return empty df
-      if (is.null(val) || length(val) == 0) {
-        return(df[0, ])
-      }
-      # If not all values selected, filter
-      if (!setequal(val, choices[[col]])) {
+      if (is.null(val) || length(val) == 0) return(df[0, ])
+      if (!setequal(val, choices[[col]]))
         df <- df[df[[col]] %in% val, ]
-      }
     }
     df
   }
   
-  to_audio_url <- function(path) {
-    root <- cache_audio_root()
-    if (nchar(root) == 0) return(path)
-    root_esc <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", root)
-    paste0("audio/", sub(paste0("^", root_esc, "/?"), "", path))
+  # ── Build composite key for unique row identification ─────────────────────────
+  build_composite_key <- function(df) {
+    tokens  <- regmatches(cache_folder_pattern(),
+                          gregexpr("(?<=\\{)[^}]+(?=\\})",
+                                   cache_folder_pattern(), perl = TRUE))[[1]]
+    id_cols <- unique(c(tokens, cache_filename_col()))
+    id_cols <- id_cols[id_cols %in% colnames(df)]
+    if (length(id_cols) == 0) return(rep(NA_character_, nrow(df)))
+    apply(df[, id_cols, drop = FALSE], 1, paste, collapse = "|")
   }
   
+  # ── Resolve audio path for a single row on click ──────────────────────────────
+  resolve_audio_path <- function(row) {
+    root <- cache_audio_root()
+    if (nchar(root) == 0) return(NULL)
+    
+    mode   <- cache_audio_mode()
+    fn_col <- cache_filename_col()
+    
+    if (mode == "csv_paths") {
+      path_col <- cache_path_col()
+      if (path_col %in% colnames(row)) return(row[[path_col]][1])
+      return(NULL)
+    }
+    
+    pattern <- cache_folder_pattern()
+    tokens  <- regmatches(pattern,
+                          gregexpr("(?<=\\{)[^}]+(?=\\})", pattern, perl = TRUE))[[1]]
+    
+    p <- pattern
+    for (tok in tokens) {
+      if (!tok %in% colnames(row)) return(NULL)
+      p <- gsub(paste0("\\{", tok, "\\}"), as.character(row[[tok]][1]), p)
+    }
+    
+    filename <- if (fn_col %in% colnames(row))
+      trimws(as.character(row[[fn_col]][1])) else return(NULL)
+    
+    local_path <- file.path(root, p, paste0(filename, ".wav"))
+    root_esc   <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", root)
+    paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
+  }
+  
+  # ── Add time bins to a scores dataframe ───────────────────────────────────────
+  add_time_bins <- function(df) {
+    time_col <- cache_time_col()
+    df %>%
+      mutate(
+        Time_posix = as.POSIXct(
+          sprintf("%06d", as.numeric(.data[[time_col]])),
+          format = "%H%M%S", tz = "UTC"),
+        Time_bin   = floor((hour(Time_posix) * 60 +
+                              minute(Time_posix)) / 30) * 30,
+        Time_label = sprintf("%02d:%02d",
+                             Time_bin %/% 60, Time_bin %% 60)
+      )
+  }
+  
+  # ── Build now playing info ────────────────────────────────────────────────────
   build_now_playing <- function(row, url) {
     meta_info <- paste(
       sapply(cache_meta_cols(), function(col) {
-        if (col %in% colnames(row)) {
+        if (col %in% colnames(row))
           paste0("<span style='color:#bbb; font-size:10px;'>", col,
                  "</span> ", row[[col]][1])
-        } else NULL
+        else NULL
       }),
       collapse = "<br>"
     )
+    
+    pc_cols    <- grep("^PC", colnames(row), value = TRUE)
+    inds       <- input$selected_indices
+    active_pcs <- unique(c(
+      if (!is.null(input$pca_x)) input$pca_x,
+      if (!is.null(input$pca_y)) input$pca_y,
+      if (!is.null(input$pca_z)) input$pca_z
+    ))
+    active_pcs <- active_pcs[active_pcs %in% pc_cols]
+    
+    value_info <- if (length(active_pcs) > 0) {
+      paste(sapply(active_pcs, function(pc) {
+        paste0("<span style='color:#bbb; font-size:10px;'>", pc,
+               "</span> ", round(row[[pc]][1], 3))
+      }), collapse = "<br>")
+    } else if (!is.null(inds) && length(inds) > 0) {
+      paste(sapply(inds, function(idx) {
+        if (idx %in% colnames(row))
+          paste0("<span style='color:#bbb; font-size:10px;'>", idx,
+                 "</span> ", round(as.numeric(row[[idx]][1]), 3))
+        else NULL
+      }), collapse = "<br>")
+    } else ""
+    
+    divider <- if (nchar(meta_info) > 0 && nchar(value_info) > 0)
+      "<br><span style='color:#e0e0dc; font-size:10px;'>──</span><br>"
+    else ""
+    
     paste0("<strong style='font-size:12px;'>", basename(url),
-           "</strong><br>", meta_info)
+           "</strong><br>", meta_info, divider, value_info)
   }
   
   # ── Core data reactives ───────────────────────────────────────────────────────
@@ -252,8 +320,7 @@ function(input, output, session) {
     df <- apply_date_filter(df)
     df <- apply_time_filter(df, input$time_range)
     df <- apply_meta_filters(df)
-    if ("audio_path" %in% colnames(df))
-      df$audio_url <- vapply(df$audio_path, to_audio_url, character(1))
+    df$.row_key <- build_composite_key(df)
     df
   })
   
@@ -262,9 +329,9 @@ function(input, output, session) {
     req(df)
     inds <- input$selected_indices
     if (is.null(inds) || length(inds) <= 3) return(NULL)
-    df <- apply_date_filter(df)
-    df <- apply_meta_filters(df)
-    pca    <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
+    df   <- apply_date_filter(df)
+    df   <- apply_meta_filters(df)
+    pca  <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
     scores <- as.data.frame(pca$x)
     scores <- bind_cols(df,
                         scores[, !(names(scores) %in% names(df)), drop = FALSE])
@@ -280,8 +347,7 @@ function(input, output, session) {
     df_proj     <- as.data.frame(predict(pca_obj, newdata = df[inds]))
     df <- bind_cols(df,
                     df_proj[, !(names(df_proj) %in% names(df)), drop = FALSE])
-    if ("audio_path" %in% colnames(df))
-      df$audio_url <- vapply(df$audio_path, to_audio_url, character(1))
+    df$.row_key <- build_composite_key(df)
     df
   })
   
@@ -294,6 +360,54 @@ function(input, output, session) {
       "#7E6148", "#B09C85"
     )
     setNames(rep_len(base_cols, length(vals)), vals)
+  }
+  
+  # ── Hover text builders ───────────────────────────────────────────────────────
+  make_text_2d <- function(d, i1, i2, colvar, date_col, time_fmt_col) {
+    paste0(colvar, ": ", d[[colvar]],
+           "<br>", i1, ": ", round(d[[i1]], 3),
+           "<br>", i2, ": ", round(d[[i2]], 3),
+           if (date_col %in% colnames(d)) paste0("<br>Date: ", d[[date_col]]),
+           "<br>Time: ", d[[time_fmt_col]])
+  }
+  
+  make_text_3d <- function(d, i1, i2, i3, colvar, date_col, time_fmt_col) {
+    paste0(colvar, ": ", d[[colvar]],
+           "<br>", i1, ": ", round(d[[i1]], 3),
+           "<br>", i2, ": ", round(d[[i2]], 3),
+           "<br>", i3, ": ", round(d[[i3]], 3),
+           if (date_col %in% colnames(d)) paste0("<br>Date: ", d[[date_col]]),
+           "<br>Time: ", d[[time_fmt_col]])
+  }
+  
+  make_text_pca_2d <- function(d, px, py, colvar, date_col, time_fmt_col) {
+    paste0(colvar, ": ", d[[colvar]],
+           "<br>", px, ": ", round(d[[px]], 3),
+           "<br>", py, ": ", round(d[[py]], 3),
+           if (date_col %in% colnames(d)) paste0("<br>Date: ", d[[date_col]]),
+           "<br>Time: ", d[[time_fmt_col]])
+  }
+  
+  make_text_pca_3d <- function(d, px, py, pz, colvar, date_col, time_fmt_col) {
+    paste0(colvar, ": ", d[[colvar]],
+           "<br>", px, ": ", round(d[[px]], 3),
+           "<br>", py, ": ", round(d[[py]], 3),
+           "<br>", pz, ": ", round(d[[pz]], 3),
+           if (date_col %in% colnames(d)) paste0("<br>Date: ", d[[date_col]]),
+           "<br>Time: ", d[[time_fmt_col]])
+  }
+  
+  make_text_diel_2d <- function(d, py, colvar) {
+    paste0("Time: ", d$Time_label,
+           "<br>", py, ": ", round(d$mean_val, 3),
+           "<br>", colvar, ": ", d[[colvar]])
+  }
+  
+  make_text_diel_3d <- function(d, py, pz, colvar) {
+    paste0("Time: ", d$Time_label,
+           "<br>", py, ": ", round(d$mean_y, 3),
+           "<br>", pz, ": ", round(d$mean_z, 3),
+           "<br>", colvar, ": ", d[[colvar]])
   }
   
   # ── Plot ──────────────────────────────────────────────────────────────────────
@@ -321,74 +435,12 @@ function(input, output, session) {
       pal       <- c("data" = "#4DBBD5")
     }
     
-    time_col <- cache_time_col()
+    time_col  <- cache_time_col()
+    date_col  <- cache_date_col()
+    has_audio <- nchar(cache_audio_root()) > 0
+    
     data$Time_fmt <- if (time_col %in% colnames(data))
       sprintf("%06d", as.numeric(data[[time_col]])) else ""
-    
-    has_audio <- "audio_path" %in% colnames(data) &&
-      !all(is.na(data$audio_path))
-    if (has_audio && !"audio_url" %in% colnames(data))
-      data$audio_url <- vapply(data$audio_path, to_audio_url, character(1))
-    
-    # ── Hover text builders ───────────────────────────────────────────────────
-    date_col <- cache_date_col()
-    time_col <- cache_time_col()
-    
-    make_text <- function(d) {
-      paste0(colvar, ": ", d[[colvar]],
-             "<br>Time: ", d$Time_fmt)
-    }
-    
-    make_text_2d <- function(d) {
-      paste0(colvar, ": ", d[[colvar]],
-             "<br>", inds[1], ": ", round(d[[inds[1]]], 3),
-             "<br>", inds[2], ": ", round(d[[inds[2]]], 3),
-             if (date_col %in% colnames(d))
-               paste0("<br>Date: ", d[[date_col]]),
-             "<br>Time: ", d$Time_fmt)
-    }
-    
-    make_text_3d <- function(d) {
-      paste0(colvar, ": ", d[[colvar]],
-             "<br>", inds[1], ": ", round(d[[inds[1]]], 3),
-             "<br>", inds[2], ": ", round(d[[inds[2]]], 3),
-             "<br>", inds[3], ": ", round(d[[inds[3]]], 3),
-             if (date_col %in% colnames(d))
-               paste0("<br>Date: ", d[[date_col]]),
-             "<br>Time: ", d$Time_fmt)
-    }
-    
-    make_text_pca_2d <- function(d, px, py) {
-      paste0(colvar, ": ", d[[colvar]],
-             "<br>", px, ": ", round(d[[px]], 3),
-             "<br>", py, ": ", round(d[[py]], 3),
-             if (date_col %in% colnames(d))
-               paste0("<br>Date: ", d[[date_col]]),
-             "<br>Time: ", d$Time_fmt)
-    }
-    
-    make_text_pca_3d <- function(d, px, py, pz) {
-      paste0(colvar, ": ", d[[colvar]],
-             "<br>", px, ": ", round(d[[px]], 3),
-             "<br>", py, ": ", round(d[[py]], 3),
-             "<br>", pz, ": ", round(d[[pz]], 3),
-             if (date_col %in% colnames(d))
-               paste0("<br>Date: ", d[[date_col]]),
-             "<br>Time: ", d$Time_fmt)
-    }
-    
-    make_text_diel_2d <- function(d, py) {
-      paste0("Time: ", d$Time_label,
-             "<br>", py, ": ", round(d[[py]], 3),
-             "<br>", colvar, ": ", d[[colvar]])
-    }
-    
-    make_text_diel_3d <- function(d, py, pz) {
-      paste0("Time: ", d$Time_label,
-             "<br>", py, ": ", round(d[[py]], 3),
-             "<br>", pz, ": ", round(d[[pz]], 3),
-             "<br>", colvar, ": ", d[[colvar]])
-    }
     
     if (n_inds == 1) {
       p <- plot_ly(data,
@@ -398,7 +450,8 @@ function(input, output, session) {
                                           inds[1], ": %{y}<extra></extra>"))
       
     } else if (n_inds == 2) {
-      data$hover <- make_text_2d(data)
+      data$hover <- make_text_2d(data, inds[1], inds[2],
+                                 colvar, date_col, "Time_fmt")
       p <- plot_ly(data,
                    x = data[[inds[1]]], y = data[[inds[2]]],
                    type = "scatter", mode = "markers",
@@ -406,12 +459,13 @@ function(input, output, session) {
                    color = color_vec, colors = pal,
                    text = ~hover,
                    hovertemplate = "%{text}<extra></extra>",
-                   key = if (has_audio) ~audio_url else NULL) %>%
+                   key = if (has_audio) ~.row_key else NULL) %>%
         layout(xaxis = list(title = inds[1]),
                yaxis = list(title = inds[2]))
       
     } else if (n_inds == 3) {
-      data$hover <- make_text_3d(data)
+      data$hover <- make_text_3d(data, inds[1], inds[2], inds[3],
+                                 colvar, date_col, "Time_fmt")
       p <- plot_ly(data,
                    x = data[[inds[1]]], y = data[[inds[2]]],
                    z = data[[inds[3]]],
@@ -420,7 +474,7 @@ function(input, output, session) {
                    color = color_vec, colors = pal,
                    text = ~hover,
                    hovertemplate = "%{text}<extra></extra>",
-                   key = if (has_audio) ~audio_url else NULL) %>%
+                   key = if (has_audio) ~.row_key else NULL) %>%
         layout(scene = list(xaxis = list(title = inds[1]),
                             yaxis = list(title = inds[2]),
                             zaxis = list(title = inds[3])))
@@ -448,7 +502,8 @@ function(input, output, session) {
       zlab <- paste0(pcz, " (", var_exp[as.numeric(sub("PC", "", pcz))], "%)")
       
       if (input$plot_type == "Scatter 3D") {
-        scores$hover <- make_text_pca_3d(scores, pcx, pcy, pcz)
+        scores$hover <- make_text_pca_3d(scores, pcx, pcy, pcz,
+                                         colvar, date_col, "Time_fmt")
         p <- plot_ly(scores,
                      x = scores[[pcx]], y = scores[[pcy]], z = scores[[pcz]],
                      type = "scatter3d", mode = "markers",
@@ -456,13 +511,14 @@ function(input, output, session) {
                      color = color_vec, colors = pal,
                      text = ~hover,
                      hovertemplate = "%{text}<extra></extra>",
-                     key = if (has_audio) ~audio_url else NULL) %>%
+                     key = if (has_audio) ~.row_key else NULL) %>%
           layout(scene = list(xaxis = list(title = xlab),
                               yaxis = list(title = ylab),
                               zaxis = list(title = zlab)))
         
       } else if (input$plot_type == "Scatter 2D") {
-        scores$hover <- make_text_pca_2d(scores, pcx, pcy)
+        scores$hover <- make_text_pca_2d(scores, pcx, pcy,
+                                         colvar, date_col, "Time_fmt")
         p <- plot_ly(scores,
                      x = scores[[pcx]], y = scores[[pcy]],
                      type = "scatter", mode = "markers",
@@ -470,26 +526,17 @@ function(input, output, session) {
                      color = color_vec, colors = pal,
                      text = ~hover,
                      hovertemplate = "%{text}<extra></extra>",
-                     key = if (has_audio) ~audio_url else NULL) %>%
+                     key = if (has_audio) ~.row_key else NULL) %>%
           layout(xaxis = list(title = xlab),
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 2D") {
-        time_col <- cache_time_col()
-        scores <- scores %>%
-          mutate(
-            Time_posix = as.POSIXct(sprintf("%06d", as.numeric(.data[[time_col]])),
-                                    format = "%H%M%S", tz = "UTC"),
-            Time_bin   = floor((hour(Time_posix) * 60 +
-                                  minute(Time_posix)) / 30) * 30,
-            Time_label = sprintf("%02d:%02d",
-                                 Time_bin %/% 60, Time_bin %% 60)
-          )
+        scores <- add_time_bins(scores)
         avg <- scores %>%
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
           summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
                     .groups = "drop")
-        avg$hover <- make_text_diel_2d(avg, pcy)
+        avg$hover <- make_text_diel_2d(avg, pcy, colvar)
         p <- plot_ly(avg,
                      x = ~Time_label, y = ~mean_val,
                      type = "scatter", mode = "lines+markers",
@@ -502,23 +549,14 @@ function(input, output, session) {
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 3D") {
-        time_col <- cache_time_col()
-        scores <- scores %>%
-          mutate(
-            Time_posix = as.POSIXct(sprintf("%06d", as.numeric(.data[[time_col]])),
-                                    format = "%H%M%S", tz = "UTC"),
-            Time_bin   = floor((hour(Time_posix) * 60 +
-                                  minute(Time_posix)) / 30) * 30,
-            Time_label = sprintf("%02d:%02d",
-                                 Time_bin %/% 60, Time_bin %% 60)
-          )
+        scores <- add_time_bins(scores)
         avg <- scores %>%
           group_by(Time_bin, Time_label, !!sym(colvar)) %>%
           summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
                     mean_z = mean(.data[[pcz]], na.rm = TRUE),
                     .groups = "drop") %>%
           arrange(Time_bin)
-        avg$hover <- make_text_diel_3d(avg, pcy, pcz)
+        avg$hover <- make_text_diel_3d(avg, pcy, pcz, colvar)
         p <- plot_ly(avg,
                      x = ~Time_label, y = ~mean_y, z = ~mean_z,
                      type = "scatter3d", mode = "lines+markers",
@@ -603,7 +641,8 @@ function(input, output, session) {
       scores    <- res$scores
       pc_cols   <- grep("^PC", colnames(scores), value = TRUE)
       meta_cols <- cache_meta_cols()
-      keep_cols <- intersect(c(meta_cols, "audio_path"), colnames(scores))
+      keep_cols <- intersect(c(meta_cols, cache_filename_col()),
+                             colnames(scores))
       write.csv(
         cbind(scores[, keep_cols, drop = FALSE],
               scores[, pc_cols,   drop = FALSE]),
@@ -618,30 +657,36 @@ function(input, output, session) {
     if (is.null(click)) return()
     
     data_clicked <- NULL
-    url          <- NULL
     
     if (!is.null(click$key)) {
-      url <- click$key
-      if (is.null(url) || is.na(url) || url == "NA") return()
+      # ── Scatter plots — use composite key ──────────────────────────────────
+      composite_key <- click$key
+      if (is.null(composite_key) || is.na(composite_key) ||
+          composite_key == "NA") return()
+      
+      df <- if (length(input$selected_indices) <= 3)
+        filtered_data() else plotting_data()
+      if (is.null(df)) return()
+      
+      row_idx <- which(df$.row_key == composite_key)
+      if (length(row_idx) == 0) return()
+      
+      row <- df[row_idx[1], ]
+      url <- resolve_audio_path(row)
+      if (is.null(url)) return()
+      
       current_audio(url)
-      
-      df  <- filtered_data()
-      row <- if ("audio_url" %in% colnames(df))
-        df[!is.na(df$audio_url) & df$audio_url == url, ]
-      else data.frame()
-      
-      info_html <- if (nrow(row) > 0) build_now_playing(row, url)
-      else paste0("<strong>", basename(url), "</strong>")
-      
-      session$sendCustomMessage("update_now_playing", list(info = info_html))
+      session$sendCustomMessage("update_now_playing",
+                                list(info = build_now_playing(row, url)))
       updateAudio(session, url)
       
     } else {
-      n_inds <- length(input$selected_indices)
-      colvar <- input$color_by
-      time_col <- cache_time_col()
+      # ── Diel / Boxplot — no key ────────────────────────────────────────────
+      n_inds   <- length(input$selected_indices)
+      colvar   <- input$color_by
       
       if (n_inds == 1) {
+        # Boxplot
         group_data   <- filtered_data() %>%
           filter(.data[[colvar]] == click$x)
         index_name   <- input$selected_indices[1]
@@ -656,51 +701,57 @@ function(input, output, session) {
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
         
-        scores <- scores %>%
-          mutate(
-            Time_posix = as.POSIXct(
-              sprintf("%06d", as.numeric(.data[[time_col]])),
-              format = "%H%M%S", tz = "UTC"),
-            Time_bin   = floor((hour(Time_posix) * 60 +
-                                  minute(Time_posix)) / 30) * 30,
-            Time_label = sprintf("%02d:%02d",
-                                 Time_bin %/% 60, Time_bin %% 60)
-          )
+        scores <- add_time_bins(scores)
         
-        candidates      <- scores %>%
-          filter(Time_label == as.character(click$x))
-        rendered_groups <- unique(as.character(candidates[[colvar]]))
-        curve_number    <- click$curveNumber
-        clicked_group   <- if (!is.null(curve_number) &&
-                               curve_number + 1 <= length(rendered_groups))
-          rendered_groups[curve_number + 1] else NULL
+        clicked_time <- as.character(click$x)
+        candidates   <- scores %>% filter(Time_label == clicked_time)
         
-        if (!is.null(clicked_group)) {
-          gc <- candidates %>% filter(.data[[colvar]] == clicked_group)
-          if (nrow(gc) > 0) candidates <- gc
+        if (nrow(candidates) == 0) return()
+        
+        # Find clicked group by comparing click$y to each group's mean
+        # at the clicked time bin — no curveNumber dependency
+        if (input$plot_type == "Diel Line 2D") {
+          avg_at_time <- candidates %>%
+            group_by(!!sym(colvar)) %>%
+            summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
+                      .groups = "drop")
+          clicked_group <- avg_at_time[[colvar]][
+            which.min(abs(avg_at_time$mean_val - as.numeric(click$y)))]
+          
+        } else {
+          avg_at_time <- candidates %>%
+            group_by(!!sym(colvar)) %>%
+            summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
+                      mean_z = mean(.data[[pcz]], na.rm = TRUE),
+                      .groups = "drop")
+          dists <- (avg_at_time$mean_y - as.numeric(click$y))^2 +
+            (avg_at_time$mean_z - as.numeric(click$z))^2
+          clicked_group <- avg_at_time[[colvar]][which.min(dists)]
         }
         
-        if (nrow(candidates) > 0) {
-          candidates <- if (input$plot_type == "Diel Line 2D") {
-            candidates %>%
+        # Filter to clicked group then find closest individual point
+        group_candidates <- candidates %>%
+          filter(.data[[colvar]] == clicked_group)
+        
+        if (nrow(group_candidates) > 0) {
+          if (input$plot_type == "Diel Line 2D") {
+            group_candidates <- group_candidates %>%
               mutate(.dist = abs(.data[[pcy]] - as.numeric(click$y)))
           } else {
-            candidates %>%
+            group_candidates <- group_candidates %>%
               mutate(.dist = (.data[[pcy]] - as.numeric(click$y))^2 +
                        (.data[[pcz]] - as.numeric(click$z))^2)
           }
-          data_clicked <- candidates[which.min(candidates$.dist), ]
+          data_clicked <- group_candidates[which.min(group_candidates$.dist), ]
         }
       }
       
-      if (!is.null(data_clicked) && nrow(data_clicked) > 0 &&
-          "audio_path" %in% colnames(data_clicked)) {
-        url <- to_audio_url(data_clicked$audio_path)
-        if (!is.null(url) && !is.na(url) && url != "NA") {
+      if (!is.null(data_clicked) && nrow(data_clicked) > 0) {
+        url <- resolve_audio_path(data_clicked)
+        if (!is.null(url)) {
           current_audio(url)
-          info_html <- build_now_playing(data_clicked, url)
           session$sendCustomMessage("update_now_playing",
-                                    list(info = info_html))
+                                    list(info = build_now_playing(data_clicked, url)))
           updateAudio(session, url)
         }
       }

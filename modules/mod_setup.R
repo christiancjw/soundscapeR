@@ -8,7 +8,6 @@ setupUI <- function(id) {
   )
 }
 
-
 setupServer <- function(id, active_config) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -35,11 +34,9 @@ setupServer <- function(id, active_config) {
       
       tagList(
         
-        # Step 1: Column mapping
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 1 — Map your columns"),
             
-            # Date and Time columns — dedicated row
             fluidRow(
               column(6,
                      div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
@@ -57,7 +54,6 @@ setupServer <- function(id, active_config) {
             
             div(style = "height: 8px;"),
             
-            # Index, Metadata, Filename row
             fluidRow(
               column(4,
                      div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
@@ -82,7 +78,6 @@ setupServer <- function(id, active_config) {
             )
         ),
         
-        # Step 2: Audio pathing
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 2 — Audio file pathing"),
             fluidRow(
@@ -127,7 +122,6 @@ setupServer <- function(id, active_config) {
             )
         ),
         
-        # Step 3: Actions
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 3 — Save and apply"),
             fluidRow(
@@ -173,14 +167,12 @@ setupServer <- function(id, active_config) {
       raw_df(df)
       cols <- colnames(df)
       
-      # Date and Time dedicated selectors
       updateSelectInput(session, "date_col",
                         choices  = cols,
                         selected = cfg$date_column %||% "Date")
       updateSelectInput(session, "time_col",
                         choices  = cols,
                         selected = cfg$time_column %||% "Time")
-      
       updateSelectInput(session, "index_cols",
                         choices  = cols,
                         selected = cfg$index_columns)
@@ -204,56 +196,27 @@ setupServer <- function(id, active_config) {
                         value = cfg$folder_structure)
     })
     
-    # ── Helper: build audio paths ──────────────────────────────────────────────
-    build_audio_paths <- function(df, audio_root, mode, pattern, fn_col) {
-      if (nchar(audio_root) == 0) return(df)
-      
-      if (!dir.exists(audio_root)) {
-        showNotification(
-          "Audio root folder not found — visualisation only mode.",
-          type = "warning", duration = 5
-        )
-        return(df)
-      }
-      
-      if (mode == "folder_structure") {
-        tokens <- regmatches(pattern,
-                             gregexpr("(?<=\\{)[^}]+(?=\\})", pattern, perl = TRUE))[[1]]
-        if (!all(tokens %in% colnames(df))) return(df)
-        df$audio_path <- mapply(function(i) {
-          p <- pattern
-          for (tok in tokens)
-            p <- gsub(paste0("\\{", tok, "\\}"),
-                      as.character(df[[tok]][i]), p)
-          file.path(audio_root, p,
-                    paste0(trimws(as.character(df[[fn_col]][i])), ".wav"))
-        }, seq_len(nrow(df)))
-        
-      } else if (mode == "csv_paths" && fn_col %in% colnames(df)) {
-        df$audio_path <- df[[fn_col]]
-      }
-      
-      df
-    }
-    
-    # ── Helper: package output_data list ──────────────────────────────────────
+    # ── Helper: package output ─────────────────────────────────────────────────
     package_output <- function(df, cfg, index_cols, meta_cols,
-                               fn_col, date_col, time_col, audio_root) {
-      # Ensure date and time cols are correct types
+                               fn_col, date_col, time_col, audio_root,
+                               audio_mode, folder_pattern, path_col) {
       if (date_col %in% colnames(df))
         df[[date_col]] <- as.integer(df[[date_col]])
       if (time_col %in% colnames(df))
         df[[time_col]] <- as.numeric(df[[time_col]])
       
       list(
-        df           = df,
-        config       = cfg,
-        index_cols   = index_cols,
-        meta_cols    = meta_cols,
-        filename_col = fn_col,
-        date_col     = date_col,
-        time_col     = time_col,
-        audio_root   = audio_root
+        df             = df,
+        config         = cfg,
+        index_cols     = index_cols,
+        meta_cols      = meta_cols,
+        filename_col   = fn_col,
+        date_col       = date_col,
+        time_col       = time_col,
+        audio_root     = audio_root,
+        audio_mode     = audio_mode,
+        folder_pattern = folder_pattern,
+        path_col       = path_col
       )
     }
     
@@ -264,23 +227,21 @@ setupServer <- function(id, active_config) {
       req(df, cfg)
       
       showNotification("Applying…", id = "apply_msg", duration = NULL)
-      
-      audio_root <- trimws(input$audio_root)
-      df <- build_audio_paths(df, audio_root, input$audio_path_mode,
-                              input$folder_structure, input$filename_col)
-      
       removeNotification("apply_msg")
       showNotification("Ready.", type = "message", duration = 2)
       
       output_data(package_output(
-        df         = df,
-        cfg        = cfg,
-        index_cols = input$index_cols,
-        meta_cols  = input$meta_cols,
-        fn_col     = input$filename_col,
-        date_col   = input$date_col,
-        time_col   = input$time_col,
-        audio_root = audio_root
+        df             = df,
+        cfg            = cfg,
+        index_cols     = input$index_cols,
+        meta_cols      = input$meta_cols,
+        fn_col         = input$filename_col,
+        date_col       = input$date_col,
+        time_col       = input$time_col,
+        audio_root     = trimws(input$audio_root),
+        audio_mode     = input$audio_path_mode,
+        folder_pattern = input$folder_structure,
+        path_col       = input$path_col
       ))
     })
     
@@ -292,35 +253,24 @@ setupServer <- function(id, active_config) {
       has_cols <- length(cfg$index_columns) > 0 &&
         length(cfg$metadata_columns) > 0 &&
         nchar(cfg$filename_column) > 0
-      
       if (!has_cols) return()
-      
-      df         <- raw_df()
-      audio_root <- trimws(cfg$audio_root %||% "")
-      mode       <- cfg$audio_path_mode %||% "folder_structure"
-      pattern    <- cfg$folder_structure %||% "{Site}/{Device}/{Date}"
-      index_cols <- unlist(cfg$index_columns)
-      meta_cols  <- unlist(cfg$metadata_columns)
-      fn_col     <- cfg$filename_column
-      date_col   <- cfg$date_column %||% "Date"
-      time_col   <- cfg$time_column %||% "Time"
       
       showNotification("Loading previous settings…",
                        id = "auto_apply_msg", duration = NULL)
-      
-      df <- build_audio_paths(df, audio_root, mode, pattern, fn_col)
-      
       removeNotification("auto_apply_msg")
       
       output_data(package_output(
-        df         = df,
-        cfg        = cfg,
-        index_cols = index_cols,
-        meta_cols  = meta_cols,
-        fn_col     = fn_col,
-        date_col   = date_col,
-        time_col   = time_col,
-        audio_root = audio_root
+        df             = raw_df(),
+        cfg            = cfg,
+        index_cols     = unlist(cfg$index_columns),
+        meta_cols      = unlist(cfg$metadata_columns),
+        fn_col         = cfg$filename_column,
+        date_col       = cfg$date_column %||% "Date",
+        time_col       = cfg$time_column %||% "Time",
+        audio_root     = trimws(cfg$audio_root %||% ""),
+        audio_mode     = cfg$audio_path_mode %||% "folder_structure",
+        folder_pattern = cfg$folder_structure %||% "{Site}/{Device}/{Date}",
+        path_col       = cfg$filename_column
       ))
     })
     
@@ -331,7 +281,13 @@ setupServer <- function(id, active_config) {
       req(df, cfg)
       
       audio_root <- trimws(input$audio_root)
-      mode       <- input$audio_path_mode
+      
+      if (!dir.exists(audio_root)) {
+        showNotification("Audio root folder not found.", type = "error")
+        return()
+      }
+      
+      mode <- input$audio_path_mode
       
       if (mode == "folder_structure") {
         pattern <- input$folder_structure
@@ -345,23 +301,30 @@ setupServer <- function(id, active_config) {
             type = "error")
           return()
         }
+        
+        # Sample 200 rows and build paths only for those
+        n_check    <- min(200, nrow(df))
+        sample_idx <- sample(seq_len(nrow(df)), n_check)
+        sample_df  <- df[sample_idx, ]
+        
         paths <- mapply(function(i) {
           p <- pattern
           for (tok in tokens)
             p <- gsub(paste0("\\{", tok, "\\}"),
-                      as.character(df[[tok]][i]), p)
+                      as.character(sample_df[[tok]][i]), p)
           file.path(audio_root, p,
-                    paste0(trimws(as.character(df[[input$filename_col]][i])),
-                           ".wav"))
-        }, seq_len(nrow(df)))
+                    paste0(trimws(as.character(
+                      sample_df[[input$filename_col]][i])), ".wav"))
+        }, seq_len(n_check))
+        
       } else {
-        paths <- df[[input$path_col]]
+        n_check    <- min(200, nrow(df))
+        sample_idx <- sample(seq_len(nrow(df)), n_check)
+        paths      <- df[[input$path_col]][sample_idx]
       }
       
-      n_check    <- min(200, length(paths))
-      sample_idx <- sample(seq_along(paths), n_check)
-      exists     <- file.exists(paths[sample_idx])
-      missing_files(paths[sample_idx][!exists])
+      exists    <- file.exists(paths)
+      missing_files(paths[!exists])
       
       n_linked  <- sum(exists)
       n_missing <- n_check - n_linked
