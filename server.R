@@ -330,35 +330,96 @@ function(input, output, session) {
     if (has_audio && !"audio_url" %in% colnames(data))
       data$audio_url <- vapply(data$audio_path, to_audio_url, character(1))
     
+    # ── Hover text builders ───────────────────────────────────────────────────
+    date_col <- cache_date_col()
+    time_col <- cache_time_col()
+    
     make_text <- function(d) {
       paste0(colvar, ": ", d[[colvar]],
              "<br>Time: ", d$Time_fmt)
     }
     
+    make_text_2d <- function(d) {
+      paste0(colvar, ": ", d[[colvar]],
+             "<br>", inds[1], ": ", round(d[[inds[1]]], 3),
+             "<br>", inds[2], ": ", round(d[[inds[2]]], 3),
+             if (date_col %in% colnames(d))
+               paste0("<br>Date: ", d[[date_col]]),
+             "<br>Time: ", d$Time_fmt)
+    }
+    
+    make_text_3d <- function(d) {
+      paste0(colvar, ": ", d[[colvar]],
+             "<br>", inds[1], ": ", round(d[[inds[1]]], 3),
+             "<br>", inds[2], ": ", round(d[[inds[2]]], 3),
+             "<br>", inds[3], ": ", round(d[[inds[3]]], 3),
+             if (date_col %in% colnames(d))
+               paste0("<br>Date: ", d[[date_col]]),
+             "<br>Time: ", d$Time_fmt)
+    }
+    
+    make_text_pca_2d <- function(d, px, py) {
+      paste0(colvar, ": ", d[[colvar]],
+             "<br>", px, ": ", round(d[[px]], 3),
+             "<br>", py, ": ", round(d[[py]], 3),
+             if (date_col %in% colnames(d))
+               paste0("<br>Date: ", d[[date_col]]),
+             "<br>Time: ", d$Time_fmt)
+    }
+    
+    make_text_pca_3d <- function(d, px, py, pz) {
+      paste0(colvar, ": ", d[[colvar]],
+             "<br>", px, ": ", round(d[[px]], 3),
+             "<br>", py, ": ", round(d[[py]], 3),
+             "<br>", pz, ": ", round(d[[pz]], 3),
+             if (date_col %in% colnames(d))
+               paste0("<br>Date: ", d[[date_col]]),
+             "<br>Time: ", d$Time_fmt)
+    }
+    
+    make_text_diel_2d <- function(d, py) {
+      paste0("Time: ", d$Time_label,
+             "<br>", py, ": ", round(d[[py]], 3),
+             "<br>", colvar, ": ", d[[colvar]])
+    }
+    
+    make_text_diel_3d <- function(d, py, pz) {
+      paste0("Time: ", d$Time_label,
+             "<br>", py, ": ", round(d[[py]], 3),
+             "<br>", pz, ": ", round(d[[pz]], 3),
+             "<br>", colvar, ": ", d[[colvar]])
+    }
+    
     if (n_inds == 1) {
       p <- plot_ly(data,
                    x = ~color_vec, y = data[[inds[1]]],
-                   type = "box", color = color_vec, colors = pal)
+                   type = "box", color = color_vec, colors = pal,
+                   hovertemplate = paste0(colvar, ": %{x}<br>",
+                                          inds[1], ": %{y}<extra></extra>"))
       
     } else if (n_inds == 2) {
+      data$hover <- make_text_2d(data)
       p <- plot_ly(data,
                    x = data[[inds[1]]], y = data[[inds[2]]],
                    type = "scatter", mode = "markers",
                    marker = list(size = 2),
                    color = color_vec, colors = pal,
-                   text = make_text(data),
+                   text = ~hover,
+                   hovertemplate = "%{text}<extra></extra>",
                    key = if (has_audio) ~audio_url else NULL) %>%
         layout(xaxis = list(title = inds[1]),
                yaxis = list(title = inds[2]))
       
     } else if (n_inds == 3) {
+      data$hover <- make_text_3d(data)
       p <- plot_ly(data,
                    x = data[[inds[1]]], y = data[[inds[2]]],
                    z = data[[inds[3]]],
                    type = "scatter3d", mode = "markers",
                    marker = list(size = 2),
                    color = color_vec, colors = pal,
-                   text = make_text(data),
+                   text = ~hover,
+                   hovertemplate = "%{text}<extra></extra>",
                    key = if (has_audio) ~audio_url else NULL) %>%
         layout(scene = list(xaxis = list(title = inds[1]),
                             yaxis = list(title = inds[2]),
@@ -387,24 +448,28 @@ function(input, output, session) {
       zlab <- paste0(pcz, " (", var_exp[as.numeric(sub("PC", "", pcz))], "%)")
       
       if (input$plot_type == "Scatter 3D") {
+        scores$hover <- make_text_pca_3d(scores, pcx, pcy, pcz)
         p <- plot_ly(scores,
                      x = scores[[pcx]], y = scores[[pcy]], z = scores[[pcz]],
                      type = "scatter3d", mode = "markers",
                      marker = list(size = 2),
                      color = color_vec, colors = pal,
-                     text = make_text(scores),
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>",
                      key = if (has_audio) ~audio_url else NULL) %>%
           layout(scene = list(xaxis = list(title = xlab),
                               yaxis = list(title = ylab),
                               zaxis = list(title = zlab)))
         
       } else if (input$plot_type == "Scatter 2D") {
+        scores$hover <- make_text_pca_2d(scores, pcx, pcy)
         p <- plot_ly(scores,
                      x = scores[[pcx]], y = scores[[pcy]],
                      type = "scatter", mode = "markers",
                      marker = list(size = 2),
                      color = color_vec, colors = pal,
-                     text = make_text(scores),
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>",
                      key = if (has_audio) ~audio_url else NULL) %>%
           layout(xaxis = list(title = xlab),
                  yaxis = list(title = ylab))
@@ -424,12 +489,15 @@ function(input, output, session) {
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
           summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
                     .groups = "drop")
+        avg$hover <- make_text_diel_2d(avg, pcy)
         p <- plot_ly(avg,
                      x = ~Time_label, y = ~mean_val,
                      type = "scatter", mode = "lines+markers",
                      line = list(shape = "spline"),
                      marker = list(size = 4),
-                     color = avg[[colvar]], colors = pal) %>%
+                     color = avg[[colvar]], colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
           layout(xaxis = list(title = "Time of day"),
                  yaxis = list(title = ylab))
         
@@ -450,11 +518,14 @@ function(input, output, session) {
                     mean_z = mean(.data[[pcz]], na.rm = TRUE),
                     .groups = "drop") %>%
           arrange(Time_bin)
+        avg$hover <- make_text_diel_3d(avg, pcy, pcz)
         p <- plot_ly(avg,
                      x = ~Time_label, y = ~mean_y, z = ~mean_z,
                      type = "scatter3d", mode = "lines+markers",
                      marker = list(size = 2),
-                     color = avg[[colvar]], colors = pal) %>%
+                     color = avg[[colvar]], colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
           layout(scene = list(xaxis = list(title = "Time of day"),
                               yaxis = list(title = ylab),
                               zaxis = list(title = zlab)))
@@ -463,10 +534,14 @@ function(input, output, session) {
         pc_sel <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         ylab   <- paste0(pc_sel, " (",
                          var_exp[as.numeric(sub("PC", "", pc_sel))], "%)")
+        scores$hover <- paste0(colvar, ": ", scores[[colvar]],
+                               "<br>", pc_sel, ": ",
+                               round(scores[[pc_sel]], 3))
         p <- plot_ly(scores,
                      x = ~color_vec, y = scores[[pc_sel]],
                      type = "box", color = color_vec, colors = pal,
-                     text = make_text(scores)) %>%
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
           layout(yaxis = list(title = ylab),
                  xaxis = list(title = colvar))
       }
