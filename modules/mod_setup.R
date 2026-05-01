@@ -8,6 +8,7 @@ setupUI <- function(id) {
   )
 }
 
+
 setupServer <- function(id, active_config) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -206,6 +207,14 @@ setupServer <- function(id, active_config) {
     # ── Helper: build audio paths ──────────────────────────────────────────────
     build_audio_paths <- function(df, audio_root, mode, pattern, fn_col) {
       if (nchar(audio_root) == 0) return(df)
+      
+      if (!dir.exists(audio_root)) {
+        showNotification(
+          "Audio root folder not found — visualisation only mode.",
+          type = "warning", duration = 5
+        )
+        return(df)
+      }
       
       if (mode == "folder_structure") {
         tokens <- regmatches(pattern,

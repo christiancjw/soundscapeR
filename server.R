@@ -31,9 +31,14 @@ function(input, output, session) {
     
     showNotification("Loading into analysis…", id = "cache_msg", duration = NULL)
     
-    if (nchar(ad$audio_root) > 0) {
+    if (nchar(ad$audio_root) > 0 && dir.exists(ad$audio_root)) {
       addResourcePath("audio", ad$audio_root)
       cache_audio_root(ad$audio_root)
+    } else if (nchar(ad$audio_root) > 0) {
+      showNotification(
+        "Audio root not accessible — analysis available, audio playback disabled.",
+        type = "warning", duration = 6
+      )
     }
     
     cache_df(ad$df)
