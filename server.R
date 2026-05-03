@@ -4,6 +4,7 @@ source("modules/mod_setup.R")
 function(input, output, session) {
   
   current_audio <- reactiveVal(NULL)
+  last_click_key <- reactiveVal(NULL)
   
   # ── Disable analysis tab on startup ──────────────────────────────────────────
   session$onFlushed(function() {
@@ -655,6 +656,14 @@ function(input, output, session) {
   observe({
     click <- event_data("plotly_click")
     if (is.null(click)) return()
+    
+    # Build a unique signature for this click event
+    click_sig <- paste(click$key, click$x, click$y, click$curveNumber,
+                       sep = "|")
+    
+    # Only proceed if this is a genuinely new click
+    if (!is.null(last_click_key()) && last_click_key() == click_sig) return()
+    last_click_key(click_sig)
     
     data_clicked <- NULL
     
