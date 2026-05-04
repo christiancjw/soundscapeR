@@ -76,6 +76,7 @@ fluidPage(
         gap: 8px;
         height: 100vh;
         box-sizing: border-box;
+        transition: all 0.2s ease;
       }
 
       #main_setup {
@@ -541,6 +542,14 @@ fluidPage(
       var collapsed = sidebar.classList.toggle('collapsed');
       toggle.classList.toggle('collapsed', collapsed);
       toggle.innerHTML = collapsed ? '›' : '‹';
+    
+      // After the CSS transition completes, tell Plotly to resize
+      setTimeout(function() {
+        var plots = document.querySelectorAll('.js-plotly-plot');
+        plots.forEach(function(plot) {
+          Plotly.Plots.resize(plot);
+        });
+      }, 220);
     }
 
     $(document).ready(function() {
