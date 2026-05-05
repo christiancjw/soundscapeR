@@ -73,7 +73,7 @@ fluidPage(
         flex-direction: column;
         overflow: hidden;
         padding: 12px;
-        gap: 8px;
+        gap: 0;
         height: 100vh;
         box-sizing: border-box;
         transition: all 0.2s ease;
@@ -90,32 +90,96 @@ fluidPage(
         min-height: 0;
         display: flex;
         flex-direction: column;
-        gap: 8px;
       }
 
-      .analysis-bottom-row {
+      /* ── Plot pane ──────────────────────────────────────────────────────── */
+      #plot_pane {
+        min-height: 200px;
+        overflow: hidden;
+        padding-bottom: 4px;
+      }
+
+      /* ── Horizontal splitter (between plot and bottom row) ──────────────── */
+      #h_splitter {
+        height: 6px;
+        background: #f0f0ec;
+        border-top: 0.5px solid #e0e0dc;
+        border-bottom: 0.5px solid #e0e0dc;
+        cursor: ns-resize;
+        flex-shrink: 0;
         display: flex;
-        gap: 10px;
-        height: 260px;
-        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        transition: background 0.15s;
       }
 
-      .analysis-left-col {
-        width: 260px;
-        min-width: 260px;
-        flex-shrink: 0;
+      #h_splitter:hover, #h_splitter.dragging {
+        background: #d8e4f5;
+        border-color: #b3c8f7;
+      }
+
+      #h_splitter::after {
+        content: '';
+        width: 32px;
+        height: 2px;
+        border-radius: 1px;
+        background: #ccc;
+      }
+
+      /* ── Bottom row ─────────────────────────────────────────────────────── */
+      #bottom_row {
+        display: flex;
+        min-height: 150px;
+        overflow: hidden;
+        padding-top: 4px;
+        gap: 0;
+      }
+
+      /* ── Bottom left and right panes ────────────────────────────────────── */
+      #bottom_left {
+        min-width: 200px;
         display: flex;
         flex-direction: column;
         gap: 6px;
+        overflow: hidden;
+        padding-right: 4px;
       }
 
-      .analysis-right-col {
-        flex: 1;
-        min-width: 0;
-        min-height: 0;
+      #bottom_right {
+        min-width: 200px;
         display: flex;
         flex-direction: column;
-        gap: 0;
+        overflow: hidden;
+        padding-left: 4px;
+      }
+
+      /* ── Vertical splitter (between left and right bottom panes) ────────── */
+      #v_splitter {
+        width: 6px;
+        background: #f0f0ec;
+        border-left: 0.5px solid #e0e0dc;
+        border-right: 0.5px solid #e0e0dc;
+        cursor: ew-resize;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        transition: background 0.15s;
+      }
+
+      #v_splitter:hover, #v_splitter.dragging {
+        background: #d8e4f5;
+        border-color: #b3c8f7;
+      }
+
+      #v_splitter::after {
+        content: '';
+        width: 2px;
+        height: 32px;
+        border-radius: 1px;
+        background: #ccc;
       }
 
       .sidebar-tabs {
@@ -231,12 +295,45 @@ fluidPage(
         margin-top: 6px;
       }
 
-      /* ── Index selector ───────────────────────────────────────────────── */
-      .index-selector-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 3px;
+      .checkbox-filter-list {
+        background: white;
+        border: 0.5px solid #e0e0dc;
+        border-radius: 6px;
+        padding: 3px 6px;
+        max-height: 90px;
+        overflow-y: auto;
+        margin-bottom: 2px;
+      }
+
+      .checkbox-filter-list .checkbox,
+      .index-selector-box .checkbox {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.2 !important;
+      }
+
+      .checkbox-filter-list .checkbox label,
+      .index-selector-box .checkbox label {
+        font-size: 10px !important;
+        color: #444;
+        font-weight: 400 !important;
+        padding-left: 4px !important;
+        min-height: 0 !important;
+        line-height: 1.3 !important;
+      }
+
+      .checkbox-filter-list .checkbox input[type='checkbox'],
+      .index-selector-box .checkbox input[type='checkbox'] {
+        accent-color: #1a56db;
+        width: 10px;
+        height: 10px;
+        margin-top: 2px !important;
+      }
+
+      .checkbox-filter-list .shiny-input-checkboxgroup,
+      .index-selector-box .shiny-input-checkboxgroup {
+        margin: 0 !important;
+        padding: 0 !important;
       }
 
       .index-selector-box {
@@ -248,50 +345,6 @@ fluidPage(
         overflow-y: auto;
       }
 
-      .index-selector-box .shiny-input-checkboxgroup > .checkbox {
-        margin: 1px 0 !important;
-      }
-
-      .index-selector-box label {
-        font-size: 10px !important;
-        color: #444;
-        font-weight: 400 !important;
-      }
-
-      .index-selector-box input[type='checkbox'] {
-        accent-color: #1a56db;
-        width: 11px;
-        height: 11px;
-      }
-
-      /* ── Metadata checkbox filters ────────────────────────────────────── */
-      .checkbox-filter-list {
-        background: white;
-        border: 0.5px solid #e0e0dc;
-        border-radius: 6px;
-        padding: 4px 6px;
-        max-height: 100px;
-        overflow-y: auto;
-        margin-bottom: 4px;
-      }
-
-      .checkbox-filter-list .shiny-input-checkboxgroup > .checkbox {
-        margin: 1px 0 !important;
-      }
-
-      .checkbox-filter-list label {
-        font-size: 10px !important;
-        color: #444;
-        font-weight: 400 !important;
-      }
-
-      .checkbox-filter-list input[type='checkbox'] {
-        accent-color: #1a56db;
-        width: 11px;
-        height: 11px;
-      }
-
-      /* ── Date range pickers ───────────────────────────────────────────── */
       .date-range-row {
         display: flex;
         gap: 6px;
@@ -317,7 +370,6 @@ fluidPage(
         margin-bottom: 2px !important;
       }
 
-      /* ── Select all / none links ──────────────────────────────────────── */
       .filter-header {
         display: flex;
         justify-content: space-between;
@@ -358,25 +410,20 @@ fluidPage(
                   onclick = "if(!this.classList.contains('disabled-tab')) switchTab('analysis')")
           ),
           
-          # ── Setup tab ──────────────────────────────────────────────────────────
           div(id = "panel_setup",
               projectUI("project")
           ),
           
-          # ── Analysis tab ────────────────────────────────────────────────────────
           div(id = "panel_analysis", style = "display: none;",
-              
-              # Indices — checkbox group with select all/none
+              # Indices
               div(class = "filter-header",
                   span(class = "s-label", style = "margin: 0;", "Acoustic indices"),
                   div(class = "filter-header-links",
                       tags$a(class = "filter-link",
-                             onclick = "Shiny.setInputValue('indices_select_all',
-                              Math.random())",
+                             onclick = "Shiny.setInputValue('indices_select_all', Math.random())",
                              "all"),
                       tags$a(class = "filter-link none",
-                             onclick = "Shiny.setInputValue('indices_deselect_all',
-                              Math.random())",
+                             onclick = "Shiny.setInputValue('indices_deselect_all', Math.random())",
                              "none")
                   )
               ),
@@ -385,33 +432,26 @@ fluidPage(
                                      choices = NULL, selected = NULL,
                                      width = "100%")
               ),
-              
-              # Date range
+              # Date Range
               div(class = "s-label", "Date range"),
               div(class = "date-range-row",
                   dateInput("date_from", label = "From",
-                            value = Sys.Date() - 365,
-                            width = "100%"),
+                            value = Sys.Date() - 365, width = "100%"),
                   dateInput("date_to", label = "To",
-                            value = Sys.Date(),
-                            width = "100%")
+                            value = Sys.Date(), width = "100%")
               ),
-              
-              # Time range
+              # Time Range
               div(class = "s-label", "Time range"),
               sliderInput("time_range", label = NULL,
                           min = 0, max = 1410, value = c(0, 1410),
                           step = 30, ticks = FALSE),
               uiOutput("time_range_label"),
-              
-              # Metadata filters — rendered dynamically
+              # Metadata filters
               uiOutput("dynamic_meta_filters"),
-              
               # Colour by
               div(class = "s-label", "Colour by"),
               selectInput("color_by", label = NULL,
                           choices = NULL, width = "100%"),
-              
               # Plot type
               div(class = "s-label", "Plot type"),
               selectInput("plot_type", label = NULL,
@@ -419,7 +459,7 @@ fluidPage(
                                       "Diel Line 2D", "Diel Line 3D",
                                       "Boxplot"),
                           selected = "Scatter 3D", width = "100%"),
-              
+              # PCA axes — conditional on plot type
               conditionalPanel(
                 condition = "input.plot_type == 'Scatter 3D'",
                 div(class = "s-label", "PCA axes"),
@@ -473,13 +513,20 @@ fluidPage(
               
               uiOutput("analysis_lock_msg"),
               
-              div(style = "flex: 1; min-height: 0;",
+              # ── Plot pane ────────────────────────────────────────────────────────
+              div(id = "plot_pane",
                   plotlyOutput("main_plot", height = "100%")
               ),
               
-              div(class = "analysis-bottom-row",
+              # ── Horizontal splitter ───────────────────────────────────────────────
+              div(id = "h_splitter"),
+              
+              # ── Bottom row ────────────────────────────────────────────────────────
+              div(id = "bottom_row",
                   
-                  div(class = "analysis-left-col",
+                  # Left: now playing + PCA summary
+                  div(id = "bottom_left",
+                      
                       div(class = "now-playing",
                           span(id = "now_playing_text",
                                style = "font-size: 11px;", "Now playing: —"),
@@ -494,6 +541,7 @@ fluidPage(
                                            class = "btn-secondary btn-sm")
                           )
                       ),
+                      
                       div(class = "pca-summary-box",
                           div(style = "display: flex; justify-content: space-between;
                            align-items: center; margin-bottom: 6px;",
@@ -508,7 +556,11 @@ fluidPage(
                       )
                   ),
                   
-                  div(class = "analysis-right-col",
+                  # Vertical splitter
+                  div(id = "v_splitter"),
+                  
+                  # Right: waveform + spectrogram
+                  div(id = "bottom_right",
                       div(id = "waveform"),
                       div(id = "spectrogram")
                   )
@@ -520,6 +572,115 @@ fluidPage(
   # ── JavaScript ────────────────────────────────────────────────────────────────
   tags$script(HTML("
 
+    // ── State ─────────────────────────────────────────────────────────────────
+    var splitterState = {
+      plotPct:   0.6,   // plot gets 60% of main_analysis height
+      leftPct:   0.5,   // left gets 50% of bottom_row width
+      dragging:  null
+    };
+
+    // ── Layout applier ────────────────────────────────────────────────────────
+    function applyLayout() {
+      var analysis  = document.getElementById('main_analysis');
+      var plotPane  = document.getElementById('plot_pane');
+      var bottomRow = document.getElementById('bottom_row');
+      var bottomLeft  = document.getElementById('bottom_left');
+      var bottomRight = document.getElementById('bottom_right');
+      var hSplit    = document.getElementById('h_splitter');
+      var vSplit    = document.getElementById('v_splitter');
+
+      if (!analysis || analysis.style.display === 'none') return;
+
+      var totalH    = analysis.clientHeight;
+      var hSplitH   = hSplit ? hSplit.offsetHeight : 6;
+      var remaining = totalH - hSplitH - 8; // 8px for padding gaps
+
+      var plotH   = Math.max(200, Math.round(remaining * splitterState.plotPct));
+      var bottomH = Math.max(150, remaining - plotH);
+
+      plotPane.style.height  = plotH + 'px';
+      bottomRow.style.height = bottomH + 'px';
+
+      // Horizontal split within bottom row
+      var totalW   = bottomRow.clientWidth;
+      var vSplitW  = vSplit ? vSplit.offsetWidth : 6;
+      var availW   = totalW - vSplitW;
+      var leftW    = Math.max(200, Math.round(availW * splitterState.leftPct));
+      var rightW   = Math.max(200, availW - leftW);
+
+      bottomLeft.style.width  = leftW + 'px';
+      bottomLeft.style.flexShrink = '0';
+      bottomRight.style.width = rightW + 'px';
+      bottomRight.style.flexShrink = '0';
+
+      resizePlotly();
+    }
+
+    function resizePlotly() {
+      setTimeout(function() {
+        var plots = document.querySelectorAll('.js-plotly-plot');
+        plots.forEach(function(p) { Plotly.Plots.resize(p); });
+      }, 30);
+    }
+
+    // ── Horizontal splitter drag ──────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+
+      var hSplit = document.getElementById('h_splitter');
+      var vSplit = document.getElementById('v_splitter');
+
+      hSplit.addEventListener('mousedown', function(e) {
+        splitterState.dragging = 'h';
+        hSplit.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      vSplit.addEventListener('mousedown', function(e) {
+        splitterState.dragging = 'v';
+        vSplit.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!splitterState.dragging) return;
+
+        if (splitterState.dragging === 'h') {
+          var analysis = document.getElementById('main_analysis');
+          var rect     = analysis.getBoundingClientRect();
+          var hSplitH  = document.getElementById('h_splitter').offsetHeight;
+          var totalH   = analysis.clientHeight - hSplitH - 8;
+          var relY     = e.clientY - rect.top;
+          splitterState.plotPct = Math.min(0.85,
+                                   Math.max(0.15, relY / analysis.clientHeight));
+
+        } else if (splitterState.dragging === 'v') {
+          var bottomRow = document.getElementById('bottom_row');
+          var rect      = bottomRow.getBoundingClientRect();
+          var vSplitW   = document.getElementById('v_splitter').offsetWidth;
+          var totalW    = bottomRow.clientWidth - vSplitW;
+          var relX      = e.clientX - rect.left;
+          splitterState.leftPct = Math.min(0.85,
+                                   Math.max(0.15, relX / bottomRow.clientWidth));
+        }
+
+        applyLayout();
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (splitterState.dragging) {
+          document.getElementById('h_splitter').classList.remove('dragging');
+          document.getElementById('v_splitter').classList.remove('dragging');
+          splitterState.dragging = null;
+          resizePlotly();
+        }
+      });
+
+      // Initial layout
+      applyLayout();
+      window.addEventListener('resize', applyLayout);
+    });
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
     function switchTab(tab) {
       document.getElementById('tab_setup').classList.remove('active');
       document.getElementById('tab_analysis').classList.remove('active');
@@ -534,24 +695,26 @@ fluidPage(
         tab === 'setup' ? 'block' : 'none';
       document.getElementById('main_analysis').style.display =
         tab === 'analysis' ? 'flex' : 'none';
+
+      if (tab === 'analysis') {
+        setTimeout(applyLayout, 50);
+      }
     }
 
+    // ── Sidebar toggle ────────────────────────────────────────────────────────
     function toggleSidebar() {
       var sidebar = document.getElementById('sidebar');
       var toggle  = document.getElementById('sidebar_toggle');
       var collapsed = sidebar.classList.toggle('collapsed');
       toggle.classList.toggle('collapsed', collapsed);
       toggle.innerHTML = collapsed ? '›' : '‹';
-    
-      // After the CSS transition completes, tell Plotly to resize
       setTimeout(function() {
-        var plots = document.querySelectorAll('.js-plotly-plot');
-        plots.forEach(function(plot) {
-          Plotly.Plots.resize(plot);
-        });
+        applyLayout();
+        resizePlotly();
       }, 220);
     }
 
+    // ── Wavesurfer ────────────────────────────────────────────────────────────
     $(document).ready(function() {
 
       var wavesurfer = WaveSurfer.create({
