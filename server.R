@@ -5,6 +5,8 @@ function(input, output, session) {
   
   current_audio  <- reactiveVal(NULL)
   last_click_key <- reactiveVal(NULL)
+  corr_plot_obj  <- reactiveVal(NULL)
+  bottom_trigger <- reactiveVal(0)
   
   # ── Disable analysis tab on startup ──────────────────────────────────────────
   session$onFlushed(function() {
@@ -56,7 +58,6 @@ function(input, output, session) {
     cache_path_col(ad$path_col)
     cache_filename_col(ad$filename_col)
     
-    # ── Date range ──────────────────────────────────────────────────────────
     date_col <- ad$date_col
     if (date_col %in% colnames(ad$df)) {
       dates    <- as.integer(ad$df[[date_col]])
@@ -70,7 +71,6 @@ function(input, output, session) {
                       min = min_date, max = max_date)
     }
     
-    # ── Build filter choices and send combination table to JS ───────────────
     filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
     filter_cols <- filter_cols[sapply(filter_cols, function(col) {
       length(unique(ad$df[[col]])) <= 200
@@ -83,26 +83,21 @@ function(input, output, session) {
     )
     cache_filter_choices(choices)
     
-    # Build deduplicated combination table for JS cascade
     if (length(filter_cols) > 0) {
       combo_df <- unique(ad$df[, filter_cols, drop = FALSE])
       combo_df <- as.data.frame(lapply(combo_df, as.character),
                                 stringsAsFactors = FALSE)
       combos   <- lapply(seq_len(nrow(combo_df)), function(i)
         as.list(combo_df[i, , drop = FALSE]))
-      
       session$sendCustomMessage("init_filters", list(
         cols   = filter_cols,
         combos = combos
       ))
     }
     
-    # ── Index selector ──────────────────────────────────────────────────────
     updateCheckboxGroupInput(session, "selected_indices",
                              choices  = ad$index_cols,
                              selected = ad$index_cols)
-    
-    # ── Colour by ───────────────────────────────────────────────────────────
     updateSelectInput(session, "color_by",
                       choices  = ad$meta_cols,
                       selected = ad$meta_cols[1])
@@ -111,6 +106,16 @@ function(input, output, session) {
     session$sendCustomMessage("set_analysis_enabled", list(enabled = TRUE))
     removeNotification("cache_msg")
     showNotification("Analysis ready.", type = "message", duration = 2)
+    
+    # Fire bottom panel trigger on first load
+    shinyjs::delay(200, {
+      bottom_trigger(isolate(bottom_trigger()) + 1)
+    })
+  })
+  
+  # ── Fire bottom trigger on compute ───────────────────────────────────────────
+  observeEvent(input$compute, {
+    bottom_trigger(bottom_trigger() + 1)
   })
   
   # ── Analysis lock message ─────────────────────────────────────────────────────
@@ -119,6 +124,7 @@ function(input, output, session) {
     div(style = "padding: 2rem; text-align: center; color: #aaa; font-size: 13px;",
         "Open a project and click Apply in Setup first.")
   })
+  outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
   
   # ── Time range label ──────────────────────────────────────────────────────────
   output$time_range_label <- renderUI({
@@ -129,8 +135,7 @@ function(input, output, session) {
         style = "font-size: 11px; color: #555; text-align: center;
                  margin-top: -8px; margin-bottom: 4px;")
   })
-  outputOptions(output, "time_range_label",   suspendWhenHidden = FALSE)
-  outputOptions(output, "analysis_lock_msg",  suspendWhenHidden = FALSE)
+  outputOptions(output, "time_range_label", suspendWhenHidden = FALSE)
   
   # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
@@ -182,7 +187,7 @@ function(input, output, session) {
     df
   }
   
-  # ── Build composite key for unique row identification ─────────────────────────
+  # ── Build composite key ───────────────────────────────────────────────────────
   build_composite_key <- function(df) {
     tokens  <- regmatches(cache_folder_pattern(),
                           gregexpr("(?<=\\{)[^}]+(?=\\})",
@@ -193,7 +198,7 @@ function(input, output, session) {
     apply(df[, id_cols, drop = FALSE], 1, paste, collapse = "|")
   }
   
-  # ── Resolve audio path for a single row on click ──────────────────────────────
+  # ── Resolve audio path ────────────────────────────────────────────────────────
   resolve_audio_path <- function(row) {
     root <- cache_audio_root()
     if (nchar(root) == 0) return(NULL)
@@ -380,20 +385,34 @@ function(input, output, session) {
            "<br>", colvar, ": ", d[[colvar]])
   }
   
-  # ── Plot ──────────────────────────────────────────────────────────────────────
+  # ── Main plot ─────────────────────────────────────────────────────────────────
   plot_results <- eventReactive(input$compute, {
     req(cache_applied())
-    inds   <- input$selected_indices
-    n_inds <- length(inds)
-    colvar <- input$color_by
+    inds    <- input$selected_indices
+    n_inds  <- length(inds)
+    colvar  <- input$color_by
+    is_corr <- input$plot_type == "Index Correlation"
     
-    if (is.null(inds) || n_inds == 0) return(NULL)
+    session$sendCustomMessage("show_corr", list(show = is_corr))
+    
+    if (is_corr) {
+      session$sendCustomMessage("compute_done", list(is_corr = TRUE))
+      return(NULL)
+    }
+    
+    if (is.null(inds) || n_inds == 0) {
+      session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+      return(NULL)
+    }
     
     data <- if (n_inds <= 3) {
       filtered_data()
     } else {
       d <- plotting_data()
-      if (is.null(d)) return(NULL)
+      if (is.null(d)) {
+        session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+        return(NULL)
+      }
       d
     }
     
@@ -463,9 +482,15 @@ function(input, output, session) {
       
       available_pcs <- grep("^PC", colnames(data), value = TRUE)
       if (input$plot_type %in% c("Scatter 3D", "Diel Line 3D") &&
-          !all(c(pcy, pcz) %in% available_pcs)) return(NULL)
+          !all(c(pcy, pcz) %in% available_pcs)) {
+        session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+        return(NULL)
+      }
       if (input$plot_type %in% c("Scatter 2D", "Diel Line 2D") &&
-          !pcy %in% available_pcs) return(NULL)
+          !pcy %in% available_pcs) {
+        session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+        return(NULL)
+      }
       
       xlab <- paste0(pcx, " (", var_exp[as.numeric(sub("PC", "", pcx))], "%)")
       ylab <- paste0(pcy, " (", var_exp[as.numeric(sub("PC", "", pcy))], "%)")
@@ -555,6 +580,8 @@ function(input, output, session) {
       }
     }
     
+    session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+    
     p %>%
       layout(legend = list(
         x = 1, y = 1, xanchor = "right", yanchor = "top",
@@ -564,6 +591,89 @@ function(input, output, session) {
       )) %>%
       event_register("plotly_click")
   })
+  
+  # ── Correlation plot ──────────────────────────────────────────────────────────
+  output$corr_plot <- renderPlot({
+    req(bottom_trigger() > 0)
+    req(cache_applied())
+    req(isolate(input$plot_type) == "Index Correlation")
+    
+    inds <- isolate(input$selected_indices)
+    
+    if (is.null(inds) || length(inds) < 2) {
+      plot.new()
+      text(0.5, 0.5, "Select at least 2 indices.",
+           cex = 1.2, col = "#aaa", adj = 0.5)
+      session$sendCustomMessage("compute_done", list(is_corr = TRUE))
+      return()
+    }
+    
+    data <- isolate(filtered_data())
+    
+    if (nrow(data) > 5000) {
+      set.seed(42)
+      data <- data[sample(nrow(data), 5000), ]
+      showNotification(
+        "Correlation plot based on random sample of 5,000 rows.",
+        type = "message", duration = 4
+      )
+    }
+    
+    plot_data <- data[, inds, drop = FALSE]
+    plot_data <- plot_data[complete.cases(plot_data), ]
+    
+    if (nrow(plot_data) == 0) {
+      plot.new()
+      text(0.5, 0.5, "No complete cases available.",
+           cex = 1.2, col = "#aaa", adj = 0.5)
+      session$sendCustomMessage("compute_done", list(is_corr = TRUE))
+      return()
+    }
+    
+    p <- GGally::ggpairs(
+      plot_data,
+      upper = list(continuous = GGally::wrap("cor",
+                                             method = "pearson",
+                                             size   = 3.5,
+                                             color  = "#333")),
+      lower = list(continuous = GGally::wrap("points",
+                                             alpha = 0.15,
+                                             size  = 0.4,
+                                             color = "#4DBBD5")),
+      diag  = list(continuous = GGally::wrap("densityDiag",
+                                             fill      = "#f7f7f5",
+                                             color     = "#666",
+                                             linewidth = 0.6))
+    ) +
+      theme_minimal(base_size = 10) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.border     = element_rect(colour = "#e0e0dc",
+                                        fill = NA, linewidth = 0.4),
+        strip.text       = element_text(size = 9, colour = "#555"),
+        axis.text        = element_text(size = 7, colour = "#888")
+      )
+    
+    corr_plot_obj(p)
+    session$sendCustomMessage("compute_done", list(is_corr = TRUE))
+    p
+  }, bg = "transparent")
+  outputOptions(output, "corr_plot", suspendWhenHidden = FALSE)
+  
+  # ── Correlation plot download ─────────────────────────────────────────────────
+  output$download_corr <- downloadHandler(
+    filename = function() paste0("correlation_", Sys.Date(), ".png"),
+    content = function(file) {
+      p <- corr_plot_obj()
+      if (is.null(p)) return(NULL)
+      w <- if (!is.null(input$corr_plot_width))  input$corr_plot_width  else 800
+      h <- if (!is.null(input$corr_plot_height)) input$corr_plot_height else 600
+      ggplot2::ggsave(file, plot = p, device = "png",
+                      width  = w / 96,
+                      height = h / 96,
+                      units  = "in", dpi = 96, bg = "white")
+    }
+  )
   
   # ── PCA axis reset ────────────────────────────────────────────────────────────
   observeEvent(input$plot_type, {
@@ -585,9 +695,10 @@ function(input, output, session) {
   
   # ── PCA summary ───────────────────────────────────────────────────────────────
   output$pca_summary <- renderPrint({
-    inds <- input$selected_indices
+    req(bottom_trigger() > 0)
+    inds <- isolate(input$selected_indices)
     if (!is.null(inds) && length(inds) > 3) {
-      res <- full_pca_data()
+      res <- isolate(full_pca_data())
       if (is.null(res)) return(cat("Computing…"))
       cat("PCA Summary:\n")
       print(summary(res$pca)$importance)
@@ -597,6 +708,85 @@ function(input, output, session) {
       cat("Select >3 indices to run PCA.")
     }
   })
+  outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
+  
+  # ── Summary statistics ────────────────────────────────────────────────────────
+  output$summary_stats <- renderUI({
+    req(bottom_trigger() > 0)
+    req(cache_applied())
+    
+    df       <- isolate(filtered_data())
+    n_recs   <- nrow(df)
+    choices  <- isolate(cache_filter_choices())
+    date_col <- isolate(cache_date_col())
+    
+    date_range_str <- if (date_col %in% colnames(df) && n_recs > 0) {
+      dates <- as.integer(df[[date_col]])
+      paste0(
+        format(as.Date(as.character(min(dates)), "%Y%m%d"), "%d %b %Y"),
+        " — ",
+        format(as.Date(as.character(max(dates)), "%Y%m%d"), "%d %b %Y")
+      )
+    } else "—"
+    
+    meta_rows <- lapply(names(choices), function(col) {
+      n_sel <- length(unique(df[[col]]))
+      n_tot <- length(choices[[col]])
+      tags$tr(
+        tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
+                col),
+        tags$td(style = "font-size:10px; padding: 2px 0;",
+                paste0(n_sel, " / ", n_tot))
+      )
+    })
+    
+    inds <- isolate(input$selected_indices)
+    index_rows <- if (!is.null(inds) && length(inds) > 0 && n_recs > 0) {
+      lapply(inds, function(idx) {
+        if (!idx %in% colnames(df)) return(NULL)
+        vals <- as.numeric(df[[idx]])
+        tags$tr(
+          tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
+                  idx),
+          tags$td(style = "font-size:10px; padding: 2px 0;",
+                  paste0(round(mean(vals, na.rm = TRUE), 3),
+                         " ± ", round(sd(vals, na.rm = TRUE), 3)))
+        )
+      })
+    } else NULL
+    
+    tagList(
+      div(style = "display: flex; gap: 8px; margin-bottom: 10px;",
+          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
+                     padding: 6px 8px; text-align: center;",
+              div(style = "font-size: 18px; font-weight: 500; color: #333;",
+                  format(n_recs, big.mark = ",")),
+              div(style = "font-size: 9px; color: #aaa; margin-top: 2px;",
+                  "recordings")
+          ),
+          div(style = "flex: 2; background: #f0f0ec; border-radius: 6px;
+                     padding: 6px 8px; text-align: center;",
+              div(style = "font-size: 11px; font-weight: 500; color: #333;",
+                  date_range_str),
+              div(style = "font-size: 9px; color: #aaa; margin-top: 2px;",
+                  "date range")
+          )
+      ),
+      if (length(meta_rows) > 0) tagList(
+        div(style = "font-size: 10px; color: #aaa; margin-bottom: 4px;",
+            "Metadata (selected / total)"),
+        tags$table(style = "width: 100%; border-collapse: collapse;",
+                   do.call(tagList, meta_rows))
+      ),
+      if (!is.null(index_rows)) tagList(
+        div(style = "font-size: 10px; color: #aaa; margin-top: 8px;
+                     margin-bottom: 4px;", "Index mean ± SD"),
+        tags$table(style = "width: 100%; border-collapse: collapse;",
+                   do.call(tagList, Filter(Negate(is.null), index_rows)))
+      )
+    )
+  })
+  outputOptions(output, "summary_stats", suspendWhenHidden = FALSE)
   
   # ── PCA export ────────────────────────────────────────────────────────────────
   output$download_pca <- downloadHandler(
