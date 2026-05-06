@@ -6,6 +6,7 @@ library(stringr)
 library(shinyjs)
 library(jsonlite)
 library(data.table)
+library(GGally)
 
 # ── Time helpers ──────────────────────────────────────────────────────────────
 minutes_to_hhmmss <- function(mins) {
