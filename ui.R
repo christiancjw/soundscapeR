@@ -668,109 +668,118 @@ fluidPage(
     }
 
     // Render all filter boxes
-    function renderFilters() {
-      var container = document.getElementById('meta_filters_container');
-      if (!container) return;
-      container.innerHTML = '';
-
-      filterCols.forEach(function(col) {
-        var available = availableFor(col);
-        var allVals   = Array.from(new Set(
-          filterCombos.map(function(r) { return r[col]; })
-        )).sort();
-
-        // Only show values that are available
-        var visible = allVals.filter(function(v) { return available.has(v); });
-
-        // Deselect any currently selected values that are no longer available
-        filterSelected[col].forEach(function(v) {
-          if (!available.has(v)) filterSelected[col].delete(v);
-        });
-
-        // Header row
-        var header = document.createElement('div');
-        header.className = 'filter-header';
-        header.style.marginTop = '8px';
-
-        var label = document.createElement('span');
-        label.className = 's-label';
-        label.style.margin = '0';
-        label.textContent = col;
-
-        var links = document.createElement('div');
-        links.className = 'filter-header-links';
-
-        var allBtn = document.createElement('button');
-        allBtn.className = 'filter-link';
-        allBtn.textContent = 'all';
-        allBtn.onclick = (function(c, avail) {
-          return function() {
-            filterSelected[c] = new Set(avail);
-            renderFilters();
-            pushFiltersToShiny();
-          };
-        })(col, visible);
-
-        var noneBtn = document.createElement('button');
-        noneBtn.className = 'filter-link none';
-        noneBtn.textContent = 'none';
-        noneBtn.onclick = (function(c) {
-          return function() {
-            filterSelected[c] = new Set();
-            renderFilters();
-            pushFiltersToShiny();
-          };
-        })(col);
-
-        links.appendChild(allBtn);
-        links.appendChild(noneBtn);
-        header.appendChild(label);
-        header.appendChild(links);
-        container.appendChild(header);
-
-        // Filter box
-        var box = document.createElement('div');
-        box.className = 'meta-filter-box';
-
-        visible.forEach(function(val) {
-          var row = document.createElement('label');
-          row.className = 'cb-row';
-
-          var cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.checked = filterSelected[col].has(val);
-          cb.onchange = (function(c, v) {
+      function renderFilters() {
+        var container = document.getElementById('meta_filters_container');
+        if (!container) return;
+        container.innerHTML = '';
+      
+        filterCols.forEach(function(col) {
+          var available = availableFor(col);
+          var allVals   = Array.from(new Set(
+            filterCombos.map(function(r) { return r[col]; })
+          )).sort();
+      
+          // NO auto-deselect — each column only filters others, never itself
+      
+          var header = document.createElement('div');
+          header.className = 'filter-header';
+          header.style.marginTop = '8px';
+      
+          var label = document.createElement('span');
+          label.className = 's-label';
+          label.style.margin = '0';
+          label.textContent = col;
+      
+          var links = document.createElement('div');
+          links.className = 'filter-header-links';
+      
+          var allBtn = document.createElement('button');
+          allBtn.className = 'filter-link';
+          allBtn.textContent = 'all';
+          allBtn.onclick = (function(c, avail) {
             return function() {
-              if (this.checked) {
-                filterSelected[c].add(v);
-              } else {
-                filterSelected[c].delete(v);
-              }
+              filterSelected[c] = new Set(avail);
               renderFilters();
               pushFiltersToShiny();
             };
-          })(col, val);
-
-          var lbl = document.createElement('span');
-          lbl.textContent = val;
-
-          row.appendChild(cb);
-          row.appendChild(lbl);
-          box.appendChild(row);
+          })(col, Array.from(available));
+      
+          var noneBtn = document.createElement('button');
+          noneBtn.className = 'filter-link none';
+          noneBtn.textContent = 'none';
+          noneBtn.onclick = (function(c) {
+            return function() {
+              filterSelected[c] = new Set();
+              renderFilters();
+              pushFiltersToShiny();
+            };
+          })(col);
+      
+          links.appendChild(allBtn);
+          links.appendChild(noneBtn);
+          header.appendChild(label);
+          header.appendChild(links);
+          container.appendChild(header);
+      
+          var box = document.createElement('div');
+          box.className = 'meta-filter-box';
+      
+          allVals.forEach(function(val) {
+            var isAvailable = available.has(val);
+            var isChecked   = filterSelected[col].has(val);
+      
+            var row = document.createElement('label');
+            row.className = 'cb-row';
+            if (!isAvailable) {
+              row.style.opacity = '0.35';
+              row.style.cursor  = 'not-allowed';
+            }
+      
+            var cb = document.createElement('input');
+            cb.type     = 'checkbox';
+            cb.checked  = isChecked;
+            cb.disabled = !isAvailable;
+            if (!isAvailable) cb.style.cursor = 'not-allowed';
+      
+            cb.onchange = (function(c, v) {
+              return function() {
+                if (this.checked) {
+                  filterSelected[c].add(v);
+                } else {
+                  filterSelected[c].delete(v);
+                }
+                renderFilters();
+                pushFiltersToShiny();
+              };
+            })(col, val);
+      
+            var lbl = document.createElement('span');
+            lbl.textContent = val;
+            if (!isAvailable) lbl.style.color = '#bbb';
+      
+            row.appendChild(cb);
+            row.appendChild(lbl);
+            box.appendChild(row);
+          });
+      
+          container.appendChild(box);
         });
-
-        container.appendChild(box);
-      });
-    }
+      }
 
     // Push current selections to Shiny as named inputs
-    function pushFiltersToShiny() {
-      filterCols.forEach(function(col) {
-        var inputId = 'meta_filter_' + col;
-        var vals    = Array.from(filterSelected[col]);
-        Shiny.setInputValue(inputId, vals, {priority: 'event'});
-      });
-    }
+      function pushFiltersToShiny() {
+        filterCols.forEach(function(col) {
+          var available = availableFor(col);
+          var activeVals = Array.from(filterSelected[col]).filter(function(v) {
+            return available.has(v);
+          });
+          Shiny.setInputValue(
+            'meta_filter_' + col,
+            activeVals,
+            {priority: 'event'}
+          );
+        });
+      }
 
     // ── Index selector all/none ───────────────────────────────────────────────
     function selectAllIndices() {
