@@ -3,7 +3,7 @@ source("modules/mod_setup.R")
 
 function(input, output, session) {
   
-  current_audio <- reactiveVal(NULL)
+  current_audio  <- reactiveVal(NULL)
   last_click_key <- reactiveVal(NULL)
   
   # ── Disable analysis tab on startup ──────────────────────────────────────────
@@ -56,6 +56,7 @@ function(input, output, session) {
     cache_path_col(ad$path_col)
     cache_filename_col(ad$filename_col)
     
+    # ── Date range ──────────────────────────────────────────────────────────
     date_col <- ad$date_col
     if (date_col %in% colnames(ad$df)) {
       dates    <- as.integer(ad$df[[date_col]])
@@ -69,19 +70,39 @@ function(input, output, session) {
                       min = min_date, max = max_date)
     }
     
+    # ── Build filter choices and send combination table to JS ───────────────
     filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
-    choices <- lapply(filter_cols, function(col) {
-      vals <- sort(unique(as.character(ad$df[[col]])))
-      if (length(vals) > 200) return(NULL)
-      vals
-    })
-    names(choices) <- filter_cols
-    choices <- Filter(Negate(is.null), choices)
+    filter_cols <- filter_cols[sapply(filter_cols, function(col) {
+      length(unique(ad$df[[col]])) <= 200
+    })]
+    
+    choices <- setNames(
+      lapply(filter_cols, function(col)
+        sort(unique(as.character(ad$df[[col]])))),
+      filter_cols
+    )
     cache_filter_choices(choices)
     
+    # Build deduplicated combination table for JS cascade
+    if (length(filter_cols) > 0) {
+      combo_df <- unique(ad$df[, filter_cols, drop = FALSE])
+      combo_df <- as.data.frame(lapply(combo_df, as.character),
+                                stringsAsFactors = FALSE)
+      combos   <- lapply(seq_len(nrow(combo_df)), function(i)
+        as.list(combo_df[i, , drop = FALSE]))
+      
+      session$sendCustomMessage("init_filters", list(
+        cols   = filter_cols,
+        combos = combos
+      ))
+    }
+    
+    # ── Index selector ──────────────────────────────────────────────────────
     updateCheckboxGroupInput(session, "selected_indices",
                              choices  = ad$index_cols,
                              selected = ad$index_cols)
+    
+    # ── Colour by ───────────────────────────────────────────────────────────
     updateSelectInput(session, "color_by",
                       choices  = ad$meta_cols,
                       selected = ad$meta_cols[1])
@@ -108,60 +129,8 @@ function(input, output, session) {
         style = "font-size: 11px; color: #555; text-align: center;
                  margin-top: -8px; margin-bottom: 4px;")
   })
-  
-  # ── Dynamic metadata filters ──────────────────────────────────────────────────
-  output$dynamic_meta_filters <- renderUI({
-    choices <- cache_filter_choices()
-    if (length(choices) == 0) return(NULL)
-    lapply(names(choices), function(col) {
-      vals <- choices[[col]]
-      tagList(
-        div(style = "display: flex; justify-content: space-between;
-                     align-items: center; margin-top: 8px; margin-bottom: 2px;",
-            span(class = "s-label", style = "margin: 0;", col),
-            div(
-              tags$a(style = "font-size: 9px; color: #1a56db; cursor: pointer;
-                            margin-right: 6px; text-decoration: none;",
-                     onclick = paste0("Shiny.setInputValue('select_all_", col,
-                                      "', Math.random())"),
-                     "all"),
-              tags$a(style = "font-size: 9px; color: #888; cursor: pointer;
-                            text-decoration: none;",
-                     onclick = paste0("Shiny.setInputValue('deselect_all_", col,
-                                      "', Math.random())"),
-                     "none")
-            )
-        ),
-        div(class = "checkbox-filter-list",
-            checkboxGroupInput(
-              inputId  = paste0("meta_filter_", col),
-              label    = NULL,
-              choices  = vals,
-              selected = vals,
-              width    = "100%"
-            )
-        )
-      )
-    })
-  })
-  outputOptions(output, "dynamic_meta_filters", suspendWhenHidden = FALSE)
-  outputOptions(output, "time_range_label",      suspendWhenHidden = FALSE)
-  outputOptions(output, "analysis_lock_msg",     suspendWhenHidden = FALSE)
-  
-  # ── Select all / none for metadata filters ────────────────────────────────────
-  observe({
-    choices <- cache_filter_choices()
-    lapply(names(choices), function(col) {
-      observeEvent(input[[paste0("select_all_", col)]], {
-        updateCheckboxGroupInput(session, paste0("meta_filter_", col),
-                                 selected = choices[[col]])
-      }, ignoreInit = TRUE)
-      observeEvent(input[[paste0("deselect_all_", col)]], {
-        updateCheckboxGroupInput(session, paste0("meta_filter_", col),
-                                 selected = character(0))
-      }, ignoreInit = TRUE)
-    })
-  })
+  outputOptions(output, "time_range_label",   suspendWhenHidden = FALSE)
+  outputOptions(output, "analysis_lock_msg",  suspendWhenHidden = FALSE)
   
   # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
@@ -256,7 +225,7 @@ function(input, output, session) {
     paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
   }
   
-  # ── Add time bins to a scores dataframe ───────────────────────────────────────
+  # ── Add time bins ─────────────────────────────────────────────────────────────
   add_time_bins <- function(df) {
     time_col <- cache_time_col()
     df %>%
@@ -657,18 +626,14 @@ function(input, output, session) {
     click <- event_data("plotly_click")
     if (is.null(click)) return()
     
-    # Build a unique signature for this click event
     click_sig <- paste(click$key, click$x, click$y, click$curveNumber,
                        sep = "|")
-    
-    # Only proceed if this is a genuinely new click
     if (!is.null(last_click_key()) && last_click_key() == click_sig) return()
     last_click_key(click_sig)
     
     data_clicked <- NULL
     
     if (!is.null(click$key)) {
-      # ── Scatter plots — use composite key ──────────────────────────────────
       composite_key <- click$key
       if (is.null(composite_key) || is.na(composite_key) ||
           composite_key == "NA") return()
@@ -690,12 +655,10 @@ function(input, output, session) {
       updateAudio(session, url)
       
     } else {
-      # ── Diel / Boxplot — no key ────────────────────────────────────────────
-      n_inds   <- length(input$selected_indices)
-      colvar   <- input$color_by
+      n_inds <- length(input$selected_indices)
+      colvar <- input$color_by
       
       if (n_inds == 1) {
-        # Boxplot
         group_data   <- filtered_data() %>%
           filter(.data[[colvar]] == click$x)
         index_name   <- input$selected_indices[1]
@@ -710,15 +673,11 @@ function(input, output, session) {
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
         
-        scores <- add_time_bins(scores)
-        
+        scores       <- add_time_bins(scores)
         clicked_time <- as.character(click$x)
         candidates   <- scores %>% filter(Time_label == clicked_time)
-        
         if (nrow(candidates) == 0) return()
         
-        # Find clicked group by comparing click$y to each group's mean
-        # at the clicked time bin — no curveNumber dependency
         if (input$plot_type == "Diel Line 2D") {
           avg_at_time <- candidates %>%
             group_by(!!sym(colvar)) %>%
@@ -726,7 +685,6 @@ function(input, output, session) {
                       .groups = "drop")
           clicked_group <- avg_at_time[[colvar]][
             which.min(abs(avg_at_time$mean_val - as.numeric(click$y)))]
-          
         } else {
           avg_at_time <- candidates %>%
             group_by(!!sym(colvar)) %>%
@@ -738,16 +696,15 @@ function(input, output, session) {
           clicked_group <- avg_at_time[[colvar]][which.min(dists)]
         }
         
-        # Filter to clicked group then find closest individual point
         group_candidates <- candidates %>%
           filter(.data[[colvar]] == clicked_group)
         
         if (nrow(group_candidates) > 0) {
-          if (input$plot_type == "Diel Line 2D") {
-            group_candidates <- group_candidates %>%
+          group_candidates <- if (input$plot_type == "Diel Line 2D") {
+            group_candidates %>%
               mutate(.dist = abs(.data[[pcy]] - as.numeric(click$y)))
           } else {
-            group_candidates <- group_candidates %>%
+            group_candidates %>%
               mutate(.dist = (.data[[pcy]] - as.numeric(click$y))^2 +
                        (.data[[pcz]] - as.numeric(click$z))^2)
           }
