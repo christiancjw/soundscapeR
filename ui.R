@@ -4,6 +4,13 @@ fluidPage(
   tags$head(
     tags$script(src = "js/wavesurfer.min.js"),
     tags$script(src = "js/spectrogram.min.js"),
+    tags$link(
+      rel  = "stylesheet",
+      href = "https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css"
+    ),
+    tags$script(
+      src = "https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"
+    ),
     tags$style(HTML("
 
       *, *::before, *::after { box-sizing: border-box; }
@@ -98,7 +105,6 @@ fluidPage(
         position: relative;
       }
 
-      /* ── Correlation overlay ─────────────────────────────────────────────── */
       #corr_overlay {
         display: none;
         position: absolute;
@@ -128,11 +134,8 @@ fluidPage(
         animation: spin 0.8s linear infinite;
       }
 
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
-      /* ── Computing overlay on plotly ─────────────────────────────────────── */
       #plot_computing {
         display: none;
         position: absolute;
@@ -226,7 +229,6 @@ fluidPage(
         background: #ccc;
       }
 
-      /* ── Bottom left tabs ────────────────────────────────────────────────── */
       .bl-tabs {
         display: flex;
         gap: 3px;
@@ -262,7 +264,6 @@ fluidPage(
 
       .bl-panel.active { display: block; }
 
-      /* ── Now playing ─────────────────────────────────────────────────────── */
       .now-playing {
         background: #f7f7f5;
         border: 0.5px solid #e0e0dc;
@@ -308,7 +309,6 @@ fluidPage(
         margin-top: 6px;
       }
 
-      /* ── Sidebar tabs ────────────────────────────────────────────────────── */
       .sidebar-tabs {
         display: flex;
         gap: 4px;
@@ -339,6 +339,19 @@ fluidPage(
         opacity: 0.4;
         cursor: not-allowed !important;
         pointer-events: none;
+      }
+
+      .section-divider {
+        font-size: 9px;
+        font-weight: 600;
+        color: #1a56db;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 12px;
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+        border-bottom: 0.5px solid #d8e4f5;
+        display: block;
       }
 
       .s-label {
@@ -453,7 +466,6 @@ fluidPage(
         line-height: 1.3;
       }
 
-      /* ── Index checkboxes — override Bootstrap ───────────────────────────── */
       .index-selector-box .shiny-input-checkboxgroup {
         margin: 0 !important;
         padding: 0 !important;
@@ -485,6 +497,29 @@ fluidPage(
         height: 11px !important;
         flex-shrink: 0 !important;
         accent-color: #1a56db !important;
+      }
+
+      .pca-axes-row {
+        display: flex;
+        gap: 4px;
+        margin-right: 2px;
+      }
+
+      .pca-axes-row .form-group {
+        flex: 1;
+        margin-bottom: 0 !important;
+      }
+
+      .pca-axes-row label {
+        font-size: 9px !important;
+        color: #aaa !important;
+        margin-bottom: 2px !important;
+      }
+
+      .pca-axes-row .selectize-input {
+        font-size: 10px !important;
+        min-height: 24px !important;
+        padding: 2px 5px !important;
       }
 
       .date-range-row {
@@ -519,8 +554,62 @@ fluidPage(
         padding: 3px 7px !important;
       }
 
+      /* ── noUiSlider theme ────────────────────────────────────────────────── */
+      .time-range-label {
+        font-size: 11px;
+        color: #555;
+        text-align: center;
+        margin-top: 4px;
+        margin-bottom: 6px;
+      }
+
+      #time_range_slider,
+      #plot_time_range_slider {
+        margin: 10px 8px 4px 8px;
+      }
+
+      .noUi-target {
+        background: #e0e0dc;
+        border: none;
+        box-shadow: none;
+        height: 4px;
+        border-radius: 2px;
+      }
+
+      .noUi-connect {
+        background: #1a56db;
+        border-radius: 2px;
+      }
+
+      .noUi-handle {
+        width: 4px !important;
+        height: 18px !important;
+        right: -2px !important;
+        top: -7px !important;
+        border-radius: 2px !important;
+        background: #1a56db !important;
+        border: none !important;
+        box-shadow: none !important;
+        cursor: ew-resize !important;
+      }
+
+      .noUi-handle:before,
+      .noUi-handle:after {
+        display: none !important;
+      }
+
+      .noUi-handle:hover,
+      .noUi-handle.noUi-active {
+        background: #0f3ba8 !important;
+        height: 22px !important;
+        top: -9px !important;
+      }
+
+      .noUi-touch-area {
+        cursor: ew-resize;
+      }
+
       .hidden { display: none; }
-      .time-slider .irs-grid-text { font-size: 9px; }
     "))
   ),
   
@@ -542,6 +631,7 @@ fluidPage(
               
               div(id = "panel_analysis", style = "display: none;",
                   
+                  # ── 1. Acoustic indices ───────────────────────────────────────────
                   div(class = "filter-header",
                       span(class = "s-label", style = "margin: 0;", "Acoustic indices"),
                       div(class = "filter-header-links",
@@ -557,6 +647,64 @@ fluidPage(
                                          width = "100%")
                   ),
                   
+                  # ── 2. Plot type ──────────────────────────────────────────────────
+                  span(class = "s-label", "Plot type"),
+                  selectInput("plot_type", label = NULL,
+                              choices = c("Scatter 3D", "Scatter 2D",
+                                          "Diel Line 2D", "Diel Line 3D",
+                                          "Boxplot", "Index Correlation"),
+                              selected = "Scatter 3D", width = "100%"),
+                  
+                  # ── 3. PCA axes ───────────────────────────────────────────────────
+                  conditionalPanel(
+                    condition = "input.plot_type == 'Scatter 3D'",
+                    span(class = "s-label", "PCA axes"),
+                    div(class = "pca-axes-row",
+                        selectInput("pca_x", "X", choices = paste0("PC", 1:10),
+                                    selected = "PC1", width = "100%"),
+                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                                    selected = "PC2", width = "100%"),
+                        selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
+                                    selected = "PC3", width = "100%")
+                    )
+                  ),
+                  conditionalPanel(
+                    condition = "input.plot_type == 'Scatter 2D'",
+                    span(class = "s-label", "PCA axes"),
+                    div(class = "pca-axes-row",
+                        selectInput("pca_x", "X", choices = paste0("PC", 1:10),
+                                    selected = "PC1", width = "100%"),
+                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                                    selected = "PC2", width = "100%")
+                    )
+                  ),
+                  conditionalPanel(
+                    condition = "input.plot_type == 'Diel Line 2D' ||
+                         input.plot_type == 'Diel Line 3D' ||
+                         input.plot_type == 'Boxplot'",
+                    span(class = "s-label", "PC axis"),
+                    div(class = "pca-axes-row",
+                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                                    selected = "PC1", width = "100%"),
+                        conditionalPanel(
+                          condition = "input.plot_type == 'Diel Line 3D'",
+                          selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
+                                      selected = "PC2", width = "100%")
+                        )
+                    )
+                  ),
+                  
+                  # ── 4. Colour by ──────────────────────────────────────────────────
+                  span(class = "s-label", "Colour by"),
+                  selectInput("color_by", label = NULL,
+                              choices = NULL, width = "100%"),
+                  
+                  # ── 5. Compute ────────────────────────────────────────────────────
+                  actionButton("compute", "Compute", class = "btn-compute"),
+                  
+                  # ── 6. Dataframe selection ────────────────────────────────────────
+                  span(class = "section-divider", "Dataframe selection"),
+                  
                   span(class = "s-label", "Date range"),
                   div(class = "date-range-row",
                       dateInput("date_from", label = "From",
@@ -566,58 +714,31 @@ fluidPage(
                   ),
                   
                   span(class = "s-label", "Time range"),
-                  sliderInput("time_range", label = NULL,
-                              min = 0, max = 1410, value = c(0, 1410),
-                              step = 30, ticks = FALSE),
-                  uiOutput("time_range_label"),
+                  div(id = "time_range_slider"),
+                  div(class = "time-range-label", id = "time_range_label_txt",
+                      "00:00 - 23:59"),
                   
                   span(class = "s-label", "Metadata filters"),
-                  div(id = "meta_filters_container"),
+                  div(id = "analysis_filters_container"),
                   
-                  span(class = "s-label", "Colour by"),
-                  selectInput("color_by", label = NULL,
-                              choices = NULL, width = "100%"),
+                  # ── 7. Plotting selection ─────────────────────────────────────────
+                  span(class = "section-divider", "Plotting selection"),
                   
-                  span(class = "s-label", "Plot type"),
-                  selectInput("plot_type", label = NULL,
-                              choices = c("Scatter 3D", "Scatter 2D",
-                                          "Diel Line 2D", "Diel Line 3D",
-                                          "Boxplot", "Index Correlation"),
-                              selected = "Scatter 3D", width = "100%"),
-                  
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Scatter 3D'",
-                    span(class = "s-label", "PCA axes"),
-                    selectInput("pca_x", "X", choices = paste0("PC", 1:10),
-                                selected = "PC1", width = "100%"),
-                    selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                selected = "PC2", width = "100%"),
-                    selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
-                                selected = "PC3", width = "100%")
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Scatter 2D'",
-                    span(class = "s-label", "PCA axes"),
-                    selectInput("pca_x", "X", choices = paste0("PC", 1:10),
-                                selected = "PC1", width = "100%"),
-                    selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                selected = "PC2", width = "100%")
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Diel Line 2D' ||
-                         input.plot_type == 'Diel Line 3D' ||
-                         input.plot_type == 'Boxplot'",
-                    span(class = "s-label", "PC (Y axis)"),
-                    selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                selected = "PC1", width = "100%")
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Diel Line 3D'",
-                    selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
-                                selected = "PC2", width = "100%")
+                  span(class = "s-label", "Date range"),
+                  div(class = "date-range-row",
+                      dateInput("plot_date_from", label = "From",
+                                value = Sys.Date() - 365, width = "100%"),
+                      dateInput("plot_date_to", label = "To",
+                                value = Sys.Date(), width = "100%")
                   ),
                   
-                  actionButton("compute", "Compute", class = "btn-compute")
+                  span(class = "s-label", "Time range"),
+                  div(id = "plot_time_range_slider"),
+                  div(class = "time-range-label", id = "plot_time_range_label_txt",
+                      "00:00 - 23:59"),
+                  
+                  span(class = "s-label", "Metadata filters"),
+                  div(id = "plot_filters_container")
               )
           )
       ),
@@ -634,32 +755,24 @@ fluidPage(
               
               uiOutput("analysis_lock_msg"),
               
-              # Plot pane — plotly always present, corr overlay on top
               div(id = "plot_pane",
-                  
-                  # Computing overlay — shown for all plot types while computing
                   div(id = "plot_computing",
                       div(class = "spinner"),
-                      span("Computing…")
+                      span("Computing...")
                   ),
-                  
-                  # Plotly — always in DOM
                   plotlyOutput("main_plot", height = "100%"),
-                  
-                  # Correlation overlay — shown on top when plot_type == Index Correlation
                   div(id = "corr_overlay",
-                      # Download button — top right corner
                       div(style = "position: absolute; top: 8px; right: 8px; z-index: 20;",
                           downloadButton("download_corr", "Save",
                                          class = "btn-sm",
                                          style = "font-size: 9px; padding: 2px 8px;
-                            height: auto; line-height: 1.4;
-                            display: none;",
+                                      height: auto; line-height: 1.4;
+                                      display: none;",
                                          id = "download_corr_btn")
                       ),
                       div(id = "corr_loading", class = "corr-loading",
                           div(class = "spinner"),
-                          span("Computing correlation matrix…")
+                          span("Computing correlation matrix...")
                       ),
                       div(id = "corr_plot_wrap",
                           style = "display: none; width: 100%; height: 100%;",
@@ -676,7 +789,7 @@ fluidPage(
                       
                       div(class = "now-playing",
                           span(id = "now_playing_text",
-                               style = "font-size: 11px;", "Now playing: —"),
+                               style = "font-size: 11px;", "Now playing: -"),
                           div(id = "buttons_container", class = "hidden",
                               style = "position: absolute; top: 8px; right: 8px;
                            display: flex; gap: 4px;",
@@ -733,410 +846,5 @@ fluidPage(
       )
   ),
   
-  tags$script(HTML("
-
-    // ── Bottom-left tab switching ─────────────────────────────────────────────
-    function switchBLTab(tab) {
-      document.querySelectorAll('.bl-tab').forEach(function(t) {
-        t.classList.remove('active');
-      });
-      document.querySelectorAll('.bl-panel').forEach(function(p) {
-        p.classList.remove('active');
-      });
-      var tabEl   = document.querySelector('.bl-tab[onclick*=\"' + tab + '\"]');
-      var panelEl = document.getElementById('bl_' + tab);
-      if (tabEl)   tabEl.classList.add('active');
-      if (panelEl) panelEl.classList.add('active');
-    }
-
-    // ── Splitter state ────────────────────────────────────────────────────────
-    var splitterState = {
-      plotPct:  0.6,
-      leftPct:  0.5,
-      dragging: null
-    };
-
-    function applyLayout() {
-      var analysis    = document.getElementById('main_analysis');
-      var plotPane    = document.getElementById('plot_pane');
-      var bottomRow   = document.getElementById('bottom_row');
-      var bottomLeft  = document.getElementById('bottom_left');
-      var bottomRight = document.getElementById('bottom_right');
-      var hSplit      = document.getElementById('h_splitter');
-      var vSplit      = document.getElementById('v_splitter');
-
-      if (!analysis || analysis.style.display === 'none') return;
-
-      var totalH    = analysis.clientHeight;
-      var hSplitH   = hSplit ? hSplit.offsetHeight : 6;
-      var remaining = totalH - hSplitH - 8;
-      var plotH     = Math.max(200, Math.round(remaining * splitterState.plotPct));
-      var bottomH   = Math.max(150, remaining - plotH);
-
-      plotPane.style.height  = plotH + 'px';
-      bottomRow.style.height = bottomH + 'px';
-
-      var totalW  = bottomRow.clientWidth;
-      var vSplitW = vSplit ? vSplit.offsetWidth : 6;
-      var availW  = totalW - vSplitW;
-      var leftW   = Math.max(200, Math.round(availW * splitterState.leftPct));
-      var rightW  = Math.max(200, availW - leftW);
-
-      bottomLeft.style.width      = leftW + 'px';
-      bottomLeft.style.flexShrink = '0';
-      bottomRight.style.width     = rightW + 'px';
-      bottomRight.style.flexShrink = '0';
-
-      resizePlotly();
-    }
-
-    function resizePlotly() {
-      setTimeout(function() {
-        document.querySelectorAll('.js-plotly-plot').forEach(function(p) {
-          Plotly.Plots.resize(p);
-        });
-      }, 30);
-    }
-
-    // ── Compute button state ──────────────────────────────────────────────────
-    function setComputing(on) {
-      var btn = document.getElementById('compute');
-      var computing = document.getElementById('plot_computing');
-      if (on) {
-        btn.disabled    = true;
-        btn.textContent = 'Computing…';
-        computing.style.display = 'flex';
-      } else {
-        btn.disabled    = false;
-        btn.textContent = 'Compute';
-        computing.style.display = 'none';
-      }
-    }
-
-    Shiny.addCustomMessageHandler('compute_done', function(msg) {
-      setComputing(false);
-      if (msg.is_corr) {
-        document.getElementById('corr_loading').style.display    = 'none';
-        document.getElementById('corr_plot_wrap').style.display  = 'block';
-        document.getElementById('download_corr_btn').style.display = 'inline-block';
-      }
-    });
-    
-    Shiny.addCustomMessageHandler('show_corr', function(msg) {
-      var overlay  = document.getElementById('corr_overlay');
-      var loading  = document.getElementById('corr_loading');
-      var plotWrap = document.getElementById('corr_plot_wrap');
-      var dlBtn    = document.getElementById('download_corr_btn');
-      if (msg.show) {
-        overlay.style.display   = 'block';
-        loading.style.display   = 'flex';
-        plotWrap.style.display  = 'none';
-        dlBtn.style.display     = 'none';
-      } else {
-        overlay.style.display   = 'none';
-        dlBtn.style.display     = 'none';
-      }
-    });
-
-    // ── Correlation overlay show/hide ─────────────────────────────────────────
-    Shiny.addCustomMessageHandler('show_corr', function(msg) {
-      var overlay  = document.getElementById('corr_overlay');
-      var loading  = document.getElementById('corr_loading');
-      var plotWrap = document.getElementById('corr_plot_wrap');
-      if (msg.show) {
-        overlay.style.display  = 'block';
-        loading.style.display  = 'flex';
-        plotWrap.style.display = 'none';
-      } else {
-        overlay.style.display  = 'none';
-      }
-    });
-
-    // ── Cascade filter state ──────────────────────────────────────────────────
-    var filterCombos   = [];
-    var filterCols     = [];
-    var filterSelected = {};
-
-    Shiny.addCustomMessageHandler('init_filters', function(msg) {
-      filterCombos   = msg.combos;
-      filterCols     = msg.cols;
-      filterSelected = {};
-      filterCols.forEach(function(col) {
-        var allVals = new Set(filterCombos.map(function(r) { return r[col]; }));
-        filterSelected[col] = new Set(allVals);
-      });
-      renderFilters();
-      pushFiltersToShiny();
-    });
-
-    function availableFor(col) {
-      var otherCols = filterCols.filter(function(c) { return c !== col; });
-      var available = new Set();
-      filterCombos.forEach(function(row) {
-        var passOthers = otherCols.every(function(c) {
-          return filterSelected[c].has(row[c]);
-        });
-        if (passOthers) available.add(row[col]);
-      });
-      return available;
-    }
-
-    function renderFilters() {
-      var container = document.getElementById('meta_filters_container');
-      if (!container) return;
-      container.innerHTML = '';
-
-      filterCols.forEach(function(col) {
-        var available = availableFor(col);
-        var allVals   = Array.from(new Set(
-          filterCombos.map(function(r) { return r[col]; })
-        )).sort();
-
-        var header = document.createElement('div');
-        header.className = 'filter-header';
-        header.style.marginTop = '8px';
-
-        var label = document.createElement('span');
-        label.className = 's-label';
-        label.style.margin = '0';
-        label.textContent = col;
-
-        var links = document.createElement('div');
-        links.className = 'filter-header-links';
-
-        var allBtn = document.createElement('button');
-        allBtn.className = 'filter-link';
-        allBtn.textContent = 'all';
-        allBtn.onclick = (function(c, avail) {
-          return function() {
-            filterSelected[c] = new Set(avail);
-            renderFilters();
-            pushFiltersToShiny();
-          };
-        })(col, Array.from(available));
-
-        var noneBtn = document.createElement('button');
-        noneBtn.className = 'filter-link none';
-        noneBtn.textContent = 'none';
-        noneBtn.onclick = (function(c) {
-          return function() {
-            filterSelected[c] = new Set();
-            renderFilters();
-            pushFiltersToShiny();
-          };
-        })(col);
-
-        links.appendChild(allBtn);
-        links.appendChild(noneBtn);
-        header.appendChild(label);
-        header.appendChild(links);
-        container.appendChild(header);
-
-        var box = document.createElement('div');
-        box.className = 'meta-filter-box';
-
-        allVals.forEach(function(val) {
-          var isAvailable = available.has(val);
-          var isChecked   = filterSelected[col].has(val);
-
-          var row = document.createElement('label');
-          row.className = 'cb-row';
-          if (!isAvailable) {
-            row.style.opacity = '0.35';
-            row.style.cursor  = 'not-allowed';
-          }
-
-          var cb = document.createElement('input');
-          cb.type     = 'checkbox';
-          cb.checked  = isChecked;
-          cb.disabled = !isAvailable;
-
-          cb.onchange = (function(c, v) {
-            return function() {
-              if (this.checked) {
-                filterSelected[c].add(v);
-              } else {
-                filterSelected[c].delete(v);
-              }
-              renderFilters();
-              pushFiltersToShiny();
-            };
-          })(col, val);
-
-          var lbl = document.createElement('span');
-          lbl.textContent = val;
-          if (!isAvailable) lbl.style.color = '#bbb';
-
-          row.appendChild(cb);
-          row.appendChild(lbl);
-          box.appendChild(row);
-        });
-
-        container.appendChild(box);
-      });
-    }
-
-    function pushFiltersToShiny() {
-      filterCols.forEach(function(col) {
-        var available  = availableFor(col);
-        var activeVals = Array.from(filterSelected[col]).filter(function(v) {
-          return available.has(v);
-        });
-        Shiny.setInputValue(
-          'meta_filter_' + col,
-          activeVals,
-          {priority: 'event'}
-        );
-      });
-    }
-
-    function selectAllIndices() {
-      Shiny.setInputValue('indices_select_all', Math.random());
-    }
-    function deselectAllIndices() {
-      Shiny.setInputValue('indices_deselect_all', Math.random());
-    }
-
-    // ── DOMContentLoaded ──────────────────────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', function() {
-
-      var sidebar        = document.getElementById('sidebar');
-      var resizeHandle   = document.getElementById('sidebar_resize');
-      var resizeDragging = false;
-
-      resizeHandle.addEventListener('mousedown', function(e) {
-        resizeDragging = true;
-        resizeHandle.classList.add('dragging');
-        e.preventDefault();
-      });
-
-      // Intercept compute click to show loading state
-      document.getElementById('compute').addEventListener('click', function() {
-        setComputing(true);
-        // Hide corr overlay until server tells us to show it
-        document.getElementById('corr_overlay').style.display = 'none';
-      });
-
-      document.addEventListener('mousemove', function(e) {
-        if (resizeDragging) {
-          var newW = Math.min(400, Math.max(160, e.clientX));
-          sidebar.style.width = newW + 'px';
-          applyLayout();
-          resizePlotly();
-        }
-        if (splitterState.dragging === 'h') {
-          var analysis = document.getElementById('main_analysis');
-          splitterState.plotPct = Math.min(0.85, Math.max(0.15,
-            (e.clientY - analysis.getBoundingClientRect().top) /
-            analysis.clientHeight));
-          applyLayout();
-          resizePlotly();
-        } else if (splitterState.dragging === 'v') {
-          var bottomRow = document.getElementById('bottom_row');
-          splitterState.leftPct = Math.min(0.85, Math.max(0.15,
-            (e.clientX - bottomRow.getBoundingClientRect().left) /
-            bottomRow.clientWidth));
-          applyLayout();
-          resizePlotly();
-        }
-      });
-
-      document.addEventListener('mouseup', function() {
-        if (resizeDragging) {
-          resizeDragging = false;
-          resizeHandle.classList.remove('dragging');
-          resizePlotly();
-        }
-        if (splitterState.dragging) {
-          document.getElementById('h_splitter').classList.remove('dragging');
-          document.getElementById('v_splitter').classList.remove('dragging');
-          splitterState.dragging = null;
-          resizePlotly();
-        }
-      });
-
-      var hSplit = document.getElementById('h_splitter');
-      var vSplit = document.getElementById('v_splitter');
-
-      hSplit.addEventListener('mousedown', function(e) {
-        splitterState.dragging = 'h';
-        hSplit.classList.add('dragging');
-        e.preventDefault();
-      });
-
-      vSplit.addEventListener('mousedown', function(e) {
-        splitterState.dragging = 'v';
-        vSplit.classList.add('dragging');
-        e.preventDefault();
-      });
-
-      applyLayout();
-      window.addEventListener('resize', applyLayout);
-    });
-
-    function switchTab(tab) {
-      document.getElementById('tab_setup').classList.remove('active');
-      document.getElementById('tab_analysis').classList.remove('active');
-      document.getElementById('tab_' + tab).classList.add('active');
-      document.getElementById('panel_setup').style.display =
-        tab === 'setup' ? 'block' : 'none';
-      document.getElementById('panel_analysis').style.display =
-        tab === 'analysis' ? 'block' : 'none';
-      document.getElementById('main_setup').style.display =
-        tab === 'setup' ? 'block' : 'none';
-      document.getElementById('main_analysis').style.display =
-        tab === 'analysis' ? 'flex' : 'none';
-      if (tab === 'analysis') setTimeout(applyLayout, 50);
-    }
-
-    $(document).ready(function() {
-
-      var wavesurfer = WaveSurfer.create({
-        container:     '#waveform',
-        waveColor:     '#a78bfa',
-        progressColor: '#7c3aed',
-        cursorColor:   '#333',
-        height:        80,
-        sampleRate:    44100,
-        plugins: [
-          WaveSurfer.Spectrogram.create({
-            container:    '#spectrogram',
-            fftSamples:   512,
-            labels:       true,
-            frequencyMax: 22050
-          })
-        ]
-      });
-
-      var isPlaying = false;
-
-      $('#play_pause').click(function() {
-        isPlaying ? wavesurfer.pause() : wavesurfer.play();
-        isPlaying = !isPlaying;
-      });
-
-      Shiny.addCustomMessageHandler('update_audio', function(msg) {
-        wavesurfer.load(msg.src);
-        wavesurfer.on('ready', function() {
-          wavesurfer.play();
-          isPlaying = true;
-        });
-      });
-
-      Shiny.addCustomMessageHandler('update_now_playing', function(msg) {
-        $('#now_playing_text').html(msg.info);
-        $('#buttons_container').removeClass('hidden');
-      });
-
-      Shiny.addCustomMessageHandler('set_analysis_enabled', function(msg) {
-        var tab = document.getElementById('tab_analysis');
-        if (msg.enabled) {
-          tab.classList.remove('disabled-tab');
-        } else {
-          tab.classList.add('disabled-tab');
-        }
-      });
-
-    });
-  "))
+  tags$script(src = "js/soundscapeR.js")
 )

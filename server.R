@@ -36,14 +36,14 @@ function(input, output, session) {
     ad <- app_data()
     if (is.null(ad)) return()
     
-    showNotification("Loading into analysis…", id = "cache_msg", duration = NULL)
+    showNotification("Loading into analysis...", id = "cache_msg", duration = NULL)
     
     if (nchar(ad$audio_root) > 0 && dir.exists(ad$audio_root)) {
       addResourcePath("audio", ad$audio_root)
       cache_audio_root(ad$audio_root)
     } else if (nchar(ad$audio_root) > 0) {
       showNotification(
-        "Audio root not accessible — analysis available, audio playback disabled.",
+        "Audio root not accessible - analysis available, audio playback disabled.",
         type = "warning", duration = 6
       )
     }
@@ -65,11 +65,18 @@ function(input, output, session) {
       min_date <- as.Date(as.character(min(dates)), format = "%Y%m%d")
       max_date <- as.Date(as.character(max(dates)), format = "%Y%m%d")
       cache_date_range(c(min_date, max_date))
-      updateDateInput(session, "date_from", value = min_date,
+      
+      updateDateInput(session, "date_from",      value = min_date,
                       min = min_date, max = max_date)
-      updateDateInput(session, "date_to",   value = max_date,
+      updateDateInput(session, "date_to",        value = max_date,
+                      min = min_date, max = max_date)
+      updateDateInput(session, "plot_date_from", value = min_date,
+                      min = min_date, max = max_date)
+      updateDateInput(session, "plot_date_to",   value = max_date,
                       min = min_date, max = max_date)
     }
+    
+    session$sendCustomMessage("reset_time_sliders", list())
     
     filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
     filter_cols <- filter_cols[sapply(filter_cols, function(col) {
@@ -107,7 +114,6 @@ function(input, output, session) {
     removeNotification("cache_msg")
     showNotification("Analysis ready.", type = "message", duration = 2)
     
-    # Fire bottom panel trigger on first load
     shinyjs::delay(200, {
       bottom_trigger(isolate(bottom_trigger()) + 1)
     })
@@ -126,17 +132,6 @@ function(input, output, session) {
   })
   outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
   
-  # ── Time range label ──────────────────────────────────────────────────────────
-  output$time_range_label <- renderUI({
-    req(input$time_range)
-    lo <- minutes_to_label(input$time_range[1])
-    hi <- minutes_to_label(input$time_range[2])
-    div(paste0(lo, " – ", hi),
-        style = "font-size: 11px; color: #555; text-align: center;
-                 margin-top: -8px; margin-bottom: 4px;")
-  })
-  outputOptions(output, "time_range_label", suspendWhenHidden = FALSE)
-  
   # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
     updateCheckboxGroupInput(session, "selected_indices",
@@ -151,35 +146,51 @@ function(input, output, session) {
   apply_time_filter <- function(df, range_mins) {
     time_col <- cache_time_col()
     if (!time_col %in% colnames(df)) return(df)
+    if (is.null(range_mins) || length(range_mins) < 2) return(df)
+    if (anyNA(range_mins)) return(df)
+    if (range_mins[1] == 0 && range_mins[2] >= 1439) return(df)
     t_start <- minutes_to_hhmmss(range_mins[1])
     t_end   <- minutes_to_hhmmss(range_mins[2])
+    if (is.na(t_start) || is.na(t_end)) return(df)
     if (t_start <= t_end)
       subset(df, df[[time_col]] >= t_start & df[[time_col]] <= t_end)
     else
       subset(df, df[[time_col]] >= t_start | df[[time_col]] <= t_end)
   }
   
-  apply_date_filter <- function(df) {
+  apply_date_filter <- function(df, from_input, to_input) {
     date_col   <- cache_date_col()
     if (!date_col %in% colnames(df)) return(df)
     date_range <- cache_date_range()
     if (is.null(date_range)) return(df)
-    from_int <- if (!is.null(input$date_from) && !is.na(input$date_from))
-      as.integer(format(input$date_from, "%Y%m%d"))
+    from_int <- if (!is.null(from_input) && !is.na(from_input))
+      as.integer(format(from_input, "%Y%m%d"))
     else
       as.integer(format(date_range[1], "%Y%m%d"))
-    to_int <- if (!is.null(input$date_to) && !is.na(input$date_to))
-      as.integer(format(input$date_to, "%Y%m%d"))
+    to_int <- if (!is.null(to_input) && !is.na(to_input))
+      as.integer(format(to_input, "%Y%m%d"))
     else
       as.integer(format(date_range[2], "%Y%m%d"))
     df[df[[date_col]] >= from_int & df[[date_col]] <= to_int, ]
   }
   
-  apply_meta_filters <- function(df) {
+  apply_analysis_meta_filters <- function(df) {
     choices <- cache_filter_choices()
     if (length(choices) == 0) return(df)
     for (col in names(choices)) {
-      val <- input[[paste0("meta_filter_", col)]]
+      val <- input[[paste0("analysis_filter_", col)]]
+      if (is.null(val) || length(val) == 0) return(df[0, ])
+      if (!setequal(val, choices[[col]]))
+        df <- df[df[[col]] %in% val, ]
+    }
+    df
+  }
+  
+  apply_plot_meta_filters <- function(df) {
+    choices <- cache_filter_choices()
+    if (length(choices) == 0) return(df)
+    for (col in names(choices)) {
+      val <- input[[paste0("plot_filter_", col)]]
       if (is.null(val) || length(val) == 0) return(df[0, ])
       if (!setequal(val, choices[[col]]))
         df <- df[df[[col]] %in% val, ]
@@ -231,8 +242,10 @@ function(input, output, session) {
   }
   
   # ── Add time bins ─────────────────────────────────────────────────────────────
-  add_time_bins <- function(df) {
-    time_col <- cache_time_col()
+  add_time_bins <- function(df, time_range) {
+    time_col  <- cache_time_col()
+    plot_tr   <- if (!is.null(time_range)) time_range else c(0, 1439)
+    df        <- apply_time_filter(df, plot_tr)
     df %>%
       mutate(
         Time_posix = as.POSIXct(
@@ -281,7 +294,7 @@ function(input, output, session) {
     } else ""
     
     divider <- if (nchar(meta_info) > 0 && nchar(value_info) > 0)
-      "<br><span style='color:#e0e0dc; font-size:10px;'>──</span><br>"
+      "<br><span style='color:#e0e0dc; font-size:10px;'>--</span><br>"
     else ""
     
     paste0("<strong style='font-size:12px;'>", basename(url),
@@ -289,41 +302,58 @@ function(input, output, session) {
   }
   
   # ── Core data reactives ───────────────────────────────────────────────────────
-  filtered_data <- reactive({
+  
+  # analysis_data: date + time + analysis meta filters
+  analysis_data <- reactive({
     df <- cache_df()
     req(df)
-    df <- apply_date_filter(df)
-    df <- apply_time_filter(df, input$time_range)
-    df <- apply_meta_filters(df)
+    anal_tr <- if (!is.null(input$time_range)) input$time_range else c(0, 1439)
+    df <- apply_date_filter(df, input$date_from, input$date_to)
+    df <- apply_time_filter(df, anal_tr)
+    df <- apply_analysis_meta_filters(df)
     df$.row_key <- build_composite_key(df)
     df
   })
   
+  # full_pca_data: runs PCA on date + analysis meta filtered data (no time filter)
   full_pca_data <- reactive({
     df <- cache_df()
     req(df)
     inds <- input$selected_indices
     if (is.null(inds) || length(inds) <= 3) return(NULL)
-    df   <- apply_date_filter(df)
-    df   <- apply_meta_filters(df)
-    pca  <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
+    df     <- apply_date_filter(df, input$date_from, input$date_to)
+    df     <- apply_analysis_meta_filters(df)
+    pca    <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
     scores <- as.data.frame(pca$x)
     scores <- bind_cols(df,
                         scores[, !(names(scores) %in% names(df)), drop = FALSE])
     list(scores = scores, pca = pca)
   })
   
-  plotting_data <- reactive({
+  # plot_data: applies plot-level filters on top of PCA scores
+  plot_data <- reactive({
+    inds    <- input$selected_indices
+    n       <- length(inds)
+    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range else c(0, 1439)
+    
+    if (n <= 3) {
+      df <- cache_df()
+      req(df)
+      df <- apply_date_filter(df, input$plot_date_from, input$plot_date_to)
+      df <- apply_time_filter(df, plot_tr)
+      df <- apply_plot_meta_filters(df)
+      df$.row_key <- build_composite_key(df)
+      return(df)
+    }
+    
     req(full_pca_data())
-    full_scores <- full_pca_data()$scores
-    pca_obj     <- full_pca_data()$pca
-    inds        <- input$selected_indices
-    df          <- apply_time_filter(full_scores, input$time_range)
-    df_proj     <- as.data.frame(predict(pca_obj, newdata = df[inds]))
-    df <- bind_cols(df,
-                    df_proj[, !(names(df_proj) %in% names(df)), drop = FALSE])
-    df$.row_key <- build_composite_key(df)
-    df
+    scores <- full_pca_data()$scores
+    
+    scores <- apply_date_filter(scores, input$plot_date_from, input$plot_date_to)
+    scores <- apply_plot_meta_filters(scores)
+    scores <- apply_time_filter(scores, plot_tr)
+    scores$.row_key <- build_composite_key(scores)
+    scores
   })
   
   # ── Palette helper ────────────────────────────────────────────────────────────
@@ -405,15 +435,10 @@ function(input, output, session) {
       return(NULL)
     }
     
-    data <- if (n_inds <= 3) {
-      filtered_data()
-    } else {
-      d <- plotting_data()
-      if (is.null(d)) {
-        session$sendCustomMessage("compute_done", list(is_corr = FALSE))
-        return(NULL)
-      }
-      d
+    data <- plot_data()
+    if (is.null(data) || nrow(data) == 0) {
+      session$sendCustomMessage("compute_done", list(is_corr = FALSE))
+      return(NULL)
     }
     
     if (!is.null(colvar) && colvar %in% colnames(data)) {
@@ -430,6 +455,8 @@ function(input, output, session) {
     
     data$Time_fmt <- if (time_col %in% colnames(data))
       sprintf("%06d", as.numeric(data[[time_col]])) else ""
+    
+    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range else c(0, 1439)
     
     if (n_inds == 1) {
       p <- plot_ly(data,
@@ -526,7 +553,7 @@ function(input, output, session) {
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 2D") {
-        scores <- add_time_bins(scores)
+        scores <- add_time_bins(scores, plot_tr)
         avg <- scores %>%
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
           summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
@@ -544,7 +571,7 @@ function(input, output, session) {
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 3D") {
-        scores <- add_time_bins(scores)
+        scores <- add_time_bins(scores, plot_tr)
         avg <- scores %>%
           group_by(Time_bin, Time_label, !!sym(colvar)) %>%
           summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
@@ -583,12 +610,15 @@ function(input, output, session) {
     session$sendCustomMessage("compute_done", list(is_corr = FALSE))
     
     p %>%
-      layout(legend = list(
-        x = 1, y = 1, xanchor = "right", yanchor = "top",
-        bgcolor = "rgba(255,255,255,0.85)", borderwidth = 0,
-        font = list(size = 10), traceorder = "normal",
-        itemsizing = "constant"
-      )) %>%
+      layout(
+        legend = list(
+          x = 1, y = 1, xanchor = "right", yanchor = "top",
+          bgcolor = "rgba(255,255,255,0.85)", borderwidth = 0,
+          font = list(size = 10), traceorder = "normal",
+          itemsizing = "constant"
+        ),
+        source = "main"
+      ) %>%
       event_register("plotly_click")
   })
   
@@ -608,7 +638,7 @@ function(input, output, session) {
       return()
     }
     
-    data <- isolate(filtered_data())
+    data <- isolate(analysis_data())
     
     if (nrow(data) > 5000) {
       set.seed(42)
@@ -619,10 +649,10 @@ function(input, output, session) {
       )
     }
     
-    plot_data <- data[, inds, drop = FALSE]
-    plot_data <- plot_data[complete.cases(plot_data), ]
+    plot_data_corr <- data[, inds, drop = FALSE]
+    plot_data_corr <- plot_data_corr[complete.cases(plot_data_corr), ]
     
-    if (nrow(plot_data) == 0) {
+    if (nrow(plot_data_corr) == 0) {
       plot.new()
       text(0.5, 0.5, "No complete cases available.",
            cex = 1.2, col = "#aaa", adj = 0.5)
@@ -631,7 +661,7 @@ function(input, output, session) {
     }
     
     p <- GGally::ggpairs(
-      plot_data,
+      plot_data_corr,
       upper = list(continuous = GGally::wrap("cor",
                                              method = "pearson",
                                              size   = 3.5,
@@ -660,7 +690,7 @@ function(input, output, session) {
   }, bg = "transparent")
   outputOptions(output, "corr_plot", suspendWhenHidden = FALSE)
   
-  # ── Correlation plot download ─────────────────────────────────────────────────
+  # ── Correlation download ──────────────────────────────────────────────────────
   output$download_corr <- downloadHandler(
     filename = function() paste0("correlation_", Sys.Date(), ".png"),
     content = function(file) {
@@ -669,9 +699,8 @@ function(input, output, session) {
       w <- if (!is.null(input$corr_plot_width))  input$corr_plot_width  else 800
       h <- if (!is.null(input$corr_plot_height)) input$corr_plot_height else 600
       ggplot2::ggsave(file, plot = p, device = "png",
-                      width  = w / 96,
-                      height = h / 96,
-                      units  = "in", dpi = 96, bg = "white")
+                      width = w / 96, height = h / 96,
+                      units = "in", dpi = 96, bg = "white")
     }
   )
   
@@ -699,7 +728,7 @@ function(input, output, session) {
     inds <- isolate(input$selected_indices)
     if (!is.null(inds) && length(inds) > 3) {
       res <- isolate(full_pca_data())
-      if (is.null(res)) return(cat("Computing…"))
+      if (is.null(res)) return(cat("Computing..."))
       cat("PCA Summary:\n")
       print(summary(res$pca)$importance)
       cat("\nLoadings:\n")
@@ -715,72 +744,107 @@ function(input, output, session) {
     req(bottom_trigger() > 0)
     req(cache_applied())
     
-    df       <- isolate(filtered_data())
-    n_recs   <- nrow(df)
-    choices  <- isolate(cache_filter_choices())
-    date_col <- isolate(cache_date_col())
+    df_analysed <- isolate(analysis_data())
+    df_plotted  <- isolate(plot_data())
+    df_total    <- isolate(cache_df())
+    choices     <- isolate(cache_filter_choices())
+    date_col    <- isolate(cache_date_col())
     
-    date_range_str <- if (date_col %in% colnames(df) && n_recs > 0) {
+    if (is.null(df_plotted))  df_plotted  <- df_analysed[0, ]
+    if (is.null(df_analysed)) df_analysed <- df_total[0, ]
+    
+    n_plotted  <- nrow(df_plotted)
+    n_analysed <- nrow(df_analysed)
+    n_total    <- if (!is.null(df_total)) nrow(df_total) else NA
+    
+    fmt_date <- function(df) {
+      if (is.null(df) || nrow(df) == 0 || !date_col %in% colnames(df))
+        return("—")
       dates <- as.integer(df[[date_col]])
+      dates <- dates[!is.na(dates)]
+      if (length(dates) == 0) return("—")
       paste0(
         format(as.Date(as.character(min(dates)), "%Y%m%d"), "%d %b %Y"),
-        " — ",
+        " - ",
         format(as.Date(as.character(max(dates)), "%Y%m%d"), "%d %b %Y")
       )
-    } else "—"
+    }
     
     meta_rows <- lapply(names(choices), function(col) {
-      n_sel <- length(unique(df[[col]]))
-      n_tot <- length(choices[[col]])
+      n_plot <- length(unique(df_plotted[[col]]))
+      n_anal <- length(unique(df_analysed[[col]]))
+      n_tot  <- length(choices[[col]])
       tags$tr(
         tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
                 col),
         tags$td(style = "font-size:10px; padding: 2px 0;",
-                paste0(n_sel, " / ", n_tot))
+                paste0(n_plot, " / ", n_anal, " / ", n_tot))
       )
     })
     
     inds <- isolate(input$selected_indices)
-    index_rows <- if (!is.null(inds) && length(inds) > 0 && n_recs > 0) {
+    index_rows <- if (!is.null(inds) && length(inds) > 0 && n_plotted > 0) {
       lapply(inds, function(idx) {
-        if (!idx %in% colnames(df)) return(NULL)
-        vals <- as.numeric(df[[idx]])
+        if (!idx %in% colnames(df_plotted)) return(NULL)
+        vals <- as.numeric(df_plotted[[idx]])
         tags$tr(
           tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
                   idx),
           tags$td(style = "font-size:10px; padding: 2px 0;",
                   paste0(round(mean(vals, na.rm = TRUE), 3),
-                         " ± ", round(sd(vals, na.rm = TRUE), 3)))
+                         " +/- ", round(sd(vals, na.rm = TRUE), 3)))
         )
       })
     } else NULL
     
     tagList(
-      div(style = "display: flex; gap: 8px; margin-bottom: 10px;",
+      div(style = "display: flex; gap: 6px; margin-bottom: 8px;",
           div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
-                     padding: 6px 8px; text-align: center;",
-              div(style = "font-size: 18px; font-weight: 500; color: #333;",
-                  format(n_recs, big.mark = ",")),
-              div(style = "font-size: 9px; color: #aaa; margin-top: 2px;",
-                  "recordings")
+                     padding: 5px 6px; text-align: center;",
+              div(style = "font-size: 15px; font-weight: 500; color: #4DBBD5;",
+                  format(n_plotted, big.mark = ",")),
+              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
+                  "plotted")
           ),
-          div(style = "flex: 2; background: #f0f0ec; border-radius: 6px;
-                     padding: 6px 8px; text-align: center;",
-              div(style = "font-size: 11px; font-weight: 500; color: #333;",
-                  date_range_str),
-              div(style = "font-size: 9px; color: #aaa; margin-top: 2px;",
-                  "date range")
+          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
+                     padding: 5px 6px; text-align: center;",
+              div(style = "font-size: 15px; font-weight: 500; color: #333;",
+                  format(n_analysed, big.mark = ",")),
+              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
+                  "analysed")
+          ),
+          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
+                     padding: 5px 6px; text-align: center;",
+              div(style = "font-size: 15px; font-weight: 500; color: #999;",
+                  format(n_total, big.mark = ",")),
+              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
+                  "total")
           )
       ),
+      
+      div(style = "background: #f0f0ec; border-radius: 6px;
+                   padding: 6px 8px; margin-bottom: 8px;",
+          div(style = "display: flex; justify-content: space-between;
+                     margin-bottom: 2px;",
+              span(style = "font-size: 9px; color: #4DBBD5;", "Plotted"),
+              span(style = "font-size: 9px; color: #333;", fmt_date(df_plotted))
+          ),
+          div(style = "display: flex; justify-content: space-between;",
+              span(style = "font-size: 9px; color: #aaa;", "Analysed"),
+              span(style = "font-size: 9px; color: #555;", fmt_date(df_analysed))
+          )
+      ),
+      
       if (length(meta_rows) > 0) tagList(
         div(style = "font-size: 10px; color: #aaa; margin-bottom: 4px;",
-            "Metadata (selected / total)"),
+            "Metadata (plotted / analysed / total)"),
         tags$table(style = "width: 100%; border-collapse: collapse;",
                    do.call(tagList, meta_rows))
       ),
+      
       if (!is.null(index_rows)) tagList(
         div(style = "font-size: 10px; color: #aaa; margin-top: 8px;
-                     margin-bottom: 4px;", "Index mean ± SD"),
+                     margin-bottom: 4px;", "Index mean +/- SD (plotted)"),
         tags$table(style = "width: 100%; border-collapse: collapse;",
                    do.call(tagList, Filter(Negate(is.null), index_rows)))
       )
@@ -813,7 +877,7 @@ function(input, output, session) {
   
   # ── Audio click ───────────────────────────────────────────────────────────────
   observe({
-    click <- event_data("plotly_click")
+    click <- event_data("plotly_click", source = "main")
     if (is.null(click)) return()
     
     click_sig <- paste(click$key, click$x, click$y, click$curveNumber,
@@ -822,14 +886,17 @@ function(input, output, session) {
     last_click_key(click_sig)
     
     data_clicked <- NULL
+    inds         <- input$selected_indices
+    n_inds       <- length(inds)
+    plot_tr      <- if (!is.null(input$plot_time_range)) input$plot_time_range
+    else c(0, 1439)
     
     if (!is.null(click$key)) {
       composite_key <- click$key
       if (is.null(composite_key) || is.na(composite_key) ||
           composite_key == "NA") return()
       
-      df <- if (length(input$selected_indices) <= 3)
-        filtered_data() else plotting_data()
+      df <- plot_data()
       if (is.null(df)) return()
       
       row_idx <- which(df$.row_key == composite_key)
@@ -845,25 +912,24 @@ function(input, output, session) {
       updateAudio(session, url)
       
     } else {
-      n_inds <- length(input$selected_indices)
       colvar <- input$color_by
       
       if (n_inds == 1) {
-        group_data   <- filtered_data() %>%
+        group_data   <- plot_data() %>%
           filter(.data[[colvar]] == click$x)
-        index_name   <- input$selected_indices[1]
+        index_name   <- inds[1]
         data_clicked <- group_data[
           which.min(abs(group_data[[index_name]] - as.numeric(click$y))), ]
         
       } else if (n_inds > 3 &&
                  input$plot_type %in% c("Diel Line 2D", "Diel Line 3D")) {
-        scores <- plotting_data()
+        scores <- plot_data()
         req(scores)
         
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
         
-        scores       <- add_time_bins(scores)
+        scores       <- add_time_bins(scores, plot_tr)
         clicked_time <- as.character(click$x)
         candidates   <- scores %>% filter(Time_label == clicked_time)
         if (nrow(candidates) == 0) return()
