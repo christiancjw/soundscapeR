@@ -792,12 +792,13 @@ fluidPage(
         resizeHandle.classList.add('dragging');
         e.preventDefault();
       });
-
+      
       document.addEventListener('mousemove', function(e) {
         if (!resizeDragging) return;
         var newW = Math.min(400, Math.max(160, e.clientX));
         sidebar.style.width = newW + 'px';
         applyLayout();
+        resizePlotly();
       });
 
       document.addEventListener('mouseup', function() {
@@ -824,7 +825,7 @@ fluidPage(
         e.preventDefault();
       });
 
-      document.addEventListener('mousemove', function(e) {
+        document.addEventListener('mousemove', function(e) {
         if (!splitterState.dragging) return;
         if (splitterState.dragging === 'h') {
           var analysis = document.getElementById('main_analysis');
@@ -838,6 +839,7 @@ fluidPage(
             bottomRow.clientWidth));
         }
         applyLayout();
+        resizePlotly();
       });
 
       document.addEventListener('mouseup', function() {
