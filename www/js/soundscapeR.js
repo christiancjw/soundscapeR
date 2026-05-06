@@ -61,6 +61,7 @@ function resizePlotly() {
 function setComputing(on) {
   var btn       = document.getElementById('compute');
   var computing = document.getElementById('plot_computing');
+  if (!btn || !computing) return;
   if (on) {
     btn.disabled    = true;
     btn.textContent = 'Computing...';
@@ -100,65 +101,7 @@ Shiny.addCustomMessageHandler('show_corr', function(msg) {
   }
 });
 
-// ── noUiSlider time range sliders ─────────────────────────────────────────────
-var sliderInstances = {};
-
-function minsToLabel(m) {
-  m = Math.round(m);
-  return String(Math.floor(m / 60)).padStart(2, '0') + ':' +
-         String(m % 60).padStart(2, '0');
-}
-
-function initSlider(elId, shinyId, labelId) {
-  var el      = document.getElementById(elId);
-  var labelEl = document.getElementById(labelId);
-  if (!el) return;
-
-  var STEP     = 15;
-  var MAX_MINS = 1439;
-
-  var slider = noUiSlider.create(el, {
-    start:     [0, MAX_MINS],
-    connect:   true,
-    step:      STEP,
-    range:     { min: 0, max: MAX_MINS },
-    behaviour: 'drag-tap'
-  });
-
-  sliderInstances[shinyId] = slider;
-
-  slider.on('update', function(values) {
-    var lo = Math.round(parseFloat(values[0]));
-    var hi = Math.round(parseFloat(values[1]));
-    if (labelEl) {
-      labelEl.textContent = minsToLabel(lo) + ' - ' + minsToLabel(hi);
-    }
-  });
-
-  slider.on('change', function(values) {
-    var lo = Math.round(parseFloat(values[0]));
-    var hi = Math.round(parseFloat(values[1]));
-    Shiny.setInputValue(shinyId, [lo, hi], {priority: 'event'});
-  });
-
-  // Push initial value immediately
-  Shiny.setInputValue(shinyId, [0, MAX_MINS], {priority: 'event'});
-  if (labelEl) labelEl.textContent = '00:00 - 23:59';
-}
-
-Shiny.addCustomMessageHandler('reset_time_sliders', function(msg) {
-  var MAX_MINS = 1439;
-  Object.keys(sliderInstances).forEach(function(shinyId) {
-    sliderInstances[shinyId].set([0, MAX_MINS]);
-    Shiny.setInputValue(shinyId, [0, MAX_MINS], {priority: 'event'});
-  });
-  var l1 = document.getElementById('time_range_label_txt');
-  var l2 = document.getElementById('plot_time_range_label_txt');
-  if (l1) l1.textContent = '00:00 - 23:59';
-  if (l2) l2.textContent = '00:00 - 23:59';
-});
-
-// ── Dual cascade filter state ─────────────────────────────────────────────────
+// ── Cascade filter state ──────────────────────────────────────────────────────
 var filterCombos     = [];
 var filterCols       = [];
 var analysisSelected = {};
@@ -376,12 +319,29 @@ function deselectAllIndices() {
   Shiny.setInputValue('indices_deselect_all', Math.random());
 }
 
-// ── DOMContentLoaded ──────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab_setup').classList.remove('active');
+  document.getElementById('tab_analysis').classList.remove('active');
+  document.getElementById('tab_' + tab).classList.add('active');
+  document.getElementById('panel_setup').style.display =
+    tab === 'setup' ? 'block' : 'none';
+  document.getElementById('panel_analysis').style.display =
+    tab === 'analysis' ? 'block' : 'none';
+  document.getElementById('main_setup').style.display =
+    tab === 'setup' ? 'block' : 'none';
+  document.getElementById('main_analysis').style.display =
+    tab === 'analysis' ? 'flex' : 'none';
+  if (tab === 'analysis') setTimeout(applyLayout, 50);
+}
 
+// ── Main setup ────────────────────────────────────────────────────────────────
+$(document).ready(function() {
 
   var sidebar        = document.getElementById('sidebar');
   var resizeHandle   = document.getElementById('sidebar_resize');
+  var hSplit         = document.getElementById('h_splitter');
+  var vSplit         = document.getElementById('v_splitter');
   var resizeDragging = false;
 
   resizeHandle.addEventListener('mousedown', function(e) {
@@ -392,6 +352,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
   document.getElementById('compute').addEventListener('click', function() {
     setComputing(true);
+  });
+
+  hSplit.addEventListener('mousedown', function(e) {
+    splitterState.dragging = 'h';
+    hSplit.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  vSplit.addEventListener('mousedown', function(e) {
+    splitterState.dragging = 'v';
+    vSplit.classList.add('dragging');
+    e.preventDefault();
   });
 
   document.addEventListener('mousemove', function(e) {
@@ -425,62 +397,17 @@ document.addEventListener('DOMContentLoaded', function() {
       resizePlotly();
     }
     if (splitterState.dragging) {
-      document.getElementById('h_splitter').classList.remove('dragging');
-      document.getElementById('v_splitter').classList.remove('dragging');
+      hSplit.classList.remove('dragging');
+      vSplit.classList.remove('dragging');
       splitterState.dragging = null;
       resizePlotly();
     }
   });
 
-  var hSplit = document.getElementById('h_splitter');
-  var vSplit = document.getElementById('v_splitter');
-
-  hSplit.addEventListener('mousedown', function(e) {
-    splitterState.dragging = 'h';
-    hSplit.classList.add('dragging');
-    e.preventDefault();
-  });
-
-  vSplit.addEventListener('mousedown', function(e) {
-    splitterState.dragging = 'v';
-    vSplit.classList.add('dragging');
-    e.preventDefault();
-  });
-
   applyLayout();
   window.addEventListener('resize', applyLayout);
-});
 
-
-// ── Tab switching + Sliders ─────────────────────────────────────────────────────────────
-
-var slidersInitialised = false;
-
-function switchTab(tab) {
-  document.getElementById('tab_setup').classList.remove('active');
-  document.getElementById('tab_analysis').classList.remove('active');
-  document.getElementById('tab_' + tab).classList.add('active');
-  document.getElementById('panel_setup').style.display =
-    tab === 'setup' ? 'block' : 'none';
-  document.getElementById('panel_analysis').style.display =
-    tab === 'analysis' ? 'block' : 'none';
-  document.getElementById('main_setup').style.display =
-    tab === 'setup' ? 'block' : 'none';
-  document.getElementById('main_analysis').style.display =
-    tab === 'analysis' ? 'flex' : 'none';
-  if (tab === 'analysis') {
-    if (!slidersInitialised) {
-      initSlider('time_range_slider',      'time_range',      'time_range_label_txt');
-      initSlider('plot_time_range_slider', 'plot_time_range', 'plot_time_range_label_txt');
-      slidersInitialised = true;
-    }
-    setTimeout(applyLayout, 50);
-  }
-}
-
-// ── Wavesurfer ────────────────────────────────────────────────────────────────
-$(document).ready(function() {
-
+  // ── Wavesurfer ──────────────────────────────────────────────────────────────
   var wavesurfer = WaveSurfer.create({
     container:     '#waveform',
     waveColor:     '#a78bfa',

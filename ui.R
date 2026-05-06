@@ -4,13 +4,6 @@ fluidPage(
   tags$head(
     tags$script(src = "js/wavesurfer.min.js"),
     tags$script(src = "js/spectrogram.min.js"),
-    tags$link(
-      rel  = "stylesheet",
-      href = "https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css"
-    ),
-    tags$script(
-      src = "https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"
-    ),
     tags$style(HTML("
 
       *, *::before, *::after { box-sizing: border-box; }
@@ -554,59 +547,60 @@ fluidPage(
         padding: 3px 7px !important;
       }
 
-      /* ── noUiSlider theme ────────────────────────────────────────────────── */
-      .time-range-label {
-        font-size: 11px;
-        color: #555;
-        text-align: center;
-        margin-top: 4px;
-        margin-bottom: 6px;
+      /* ── Shiny time range slider ─────────────────────────────────────────── */
+      .irs--shiny .irs-bar {
+        background: #1a56db !important;
+        border-top: none !important;
+        border-bottom: none !important;
+        height: 4px !important;
+        top: 25px !important;
       }
 
-      #time_range_slider,
-      #plot_time_range_slider {
-        margin: 10px 8px 4px 8px;
-      }
-
-      .noUi-target {
-        background: #e0e0dc;
-        border: none;
-        box-shadow: none;
-        height: 4px;
-        border-radius: 2px;
-      }
-
-      .noUi-connect {
-        background: #1a56db;
-        border-radius: 2px;
-      }
-
-      .noUi-handle {
-        width: 4px !important;
-        height: 18px !important;
-        right: -2px !important;
-        top: -7px !important;
+      .irs--shiny .irs-line {
+        background: #e0e0dc !important;
+        border: none !important;
+        height: 4px !important;
+        top: 25px !important;
         border-radius: 2px !important;
+      }
+
+      .irs--shiny .irs-handle {
         background: #1a56db !important;
         border: none !important;
         box-shadow: none !important;
+        width: 10px !important;
+        height: 18px !important;
+        border-radius: 3px !important;
+        top: 19px !important;
         cursor: ew-resize !important;
       }
 
-      .noUi-handle:before,
-      .noUi-handle:after {
+      .irs--shiny .irs-handle:hover,
+      .irs--shiny .irs-handle.state_hover {
+        background: #0f3ba8 !important;
+      }
+
+      .irs--shiny .irs-from,
+      .irs--shiny .irs-to,
+      .irs--shiny .irs-single {
         display: none !important;
       }
 
-      .noUi-handle:hover,
-      .noUi-handle.noUi-active {
-        background: #0f3ba8 !important;
-        height: 22px !important;
-        top: -9px !important;
+      .irs--shiny .irs-min,
+      .irs--shiny .irs-max {
+        display: none !important;
       }
 
-      .noUi-touch-area {
-        cursor: ew-resize;
+      .irs--shiny .irs-grid {
+        display: none !important;
+      }
+
+      .irs {
+        height: 36px !important;
+      }
+
+      .sidebar .irs-with-grid {
+        margin-bottom: 0 !important;
       }
 
       .hidden { display: none; }
@@ -714,9 +708,10 @@ fluidPage(
                   ),
                   
                   span(class = "s-label", "Time range"),
-                  div(id = "time_range_slider"),
-                  div(class = "time-range-label", id = "time_range_label_txt",
-                      "00:00 - 23:59"),
+                  sliderInput("time_range", label = NULL,
+                              min = 0, max = 1440, value = c(0, 1440),
+                              step = 15, ticks = FALSE, width = "100%"),
+                  uiOutput("time_range_label"),
                   
                   span(class = "s-label", "Metadata filters"),
                   div(id = "analysis_filters_container"),
@@ -733,9 +728,10 @@ fluidPage(
                   ),
                   
                   span(class = "s-label", "Time range"),
-                  div(id = "plot_time_range_slider"),
-                  div(class = "time-range-label", id = "plot_time_range_label_txt",
-                      "00:00 - 23:59"),
+                  sliderInput("plot_time_range", label = NULL,
+                              min = 0, max = 1440, value = c(0, 1440),
+                              step = 15, ticks = FALSE, width = "100%"),
+                  uiOutput("plot_time_range_label"),
                   
                   span(class = "s-label", "Metadata filters"),
                   div(id = "plot_filters_container")

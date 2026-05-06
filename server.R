@@ -8,16 +8,13 @@ function(input, output, session) {
   corr_plot_obj  <- reactiveVal(NULL)
   bottom_trigger <- reactiveVal(0)
   
-  # ── Disable analysis tab on startup ──────────────────────────────────────────
   session$onFlushed(function() {
     session$sendCustomMessage("set_analysis_enabled", list(enabled = FALSE))
   }, once = TRUE)
   
-  # ── Module wiring ─────────────────────────────────────────────────────────────
   active_config <- projectServer("project")
   app_data      <- setupServer("setup", active_config)
   
-  # ── Flat cache ────────────────────────────────────────────────────────────────
   cache_df             <- reactiveVal(NULL)
   cache_index_cols     <- reactiveVal(character(0))
   cache_meta_cols      <- reactiveVal(character(0))
@@ -76,7 +73,10 @@ function(input, output, session) {
                       min = min_date, max = max_date)
     }
     
-    session$sendCustomMessage("reset_time_sliders", list())
+    updateSliderInput(session, "time_range",
+                      value = c(0, 1440))
+    updateSliderInput(session, "plot_time_range",
+                      value = c(0, 1440))
     
     filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
     filter_cols <- filter_cols[sapply(filter_cols, function(col) {
@@ -119,12 +119,10 @@ function(input, output, session) {
     })
   })
   
-  # ── Fire bottom trigger on compute ───────────────────────────────────────────
   observeEvent(input$compute, {
     bottom_trigger(bottom_trigger() + 1)
   })
   
-  # ── Analysis lock message ─────────────────────────────────────────────────────
   output$analysis_lock_msg <- renderUI({
     if (cache_applied()) return(NULL)
     div(style = "padding: 2rem; text-align: center; color: #aaa; font-size: 13px;",
@@ -132,7 +130,6 @@ function(input, output, session) {
   })
   outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
   
-  # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
     updateCheckboxGroupInput(session, "selected_indices",
                              selected = cache_index_cols())
@@ -148,7 +145,7 @@ function(input, output, session) {
     if (!time_col %in% colnames(df)) return(df)
     if (is.null(range_mins) || length(range_mins) < 2) return(df)
     if (anyNA(range_mins)) return(df)
-    if (range_mins[1] == 0 && range_mins[2] >= 1439) return(df)
+    if (range_mins[1] <= 0 && range_mins[2] >= 1440) return(df)
     t_start <- minutes_to_hhmmss(range_mins[1])
     t_end   <- minutes_to_hhmmss(range_mins[2])
     if (is.na(t_start) || is.na(t_end)) return(df)
@@ -198,7 +195,6 @@ function(input, output, session) {
     df
   }
   
-  # ── Build composite key ───────────────────────────────────────────────────────
   build_composite_key <- function(df) {
     tokens  <- regmatches(cache_folder_pattern(),
                           gregexpr("(?<=\\{)[^}]+(?=\\})",
@@ -209,43 +205,35 @@ function(input, output, session) {
     apply(df[, id_cols, drop = FALSE], 1, paste, collapse = "|")
   }
   
-  # ── Resolve audio path ────────────────────────────────────────────────────────
   resolve_audio_path <- function(row) {
     root <- cache_audio_root()
     if (nchar(root) == 0) return(NULL)
-    
     mode   <- cache_audio_mode()
     fn_col <- cache_filename_col()
-    
     if (mode == "csv_paths") {
       path_col <- cache_path_col()
       if (path_col %in% colnames(row)) return(row[[path_col]][1])
       return(NULL)
     }
-    
     pattern <- cache_folder_pattern()
     tokens  <- regmatches(pattern,
                           gregexpr("(?<=\\{)[^}]+(?=\\})", pattern, perl = TRUE))[[1]]
-    
     p <- pattern
     for (tok in tokens) {
       if (!tok %in% colnames(row)) return(NULL)
       p <- gsub(paste0("\\{", tok, "\\}"), as.character(row[[tok]][1]), p)
     }
-    
     filename <- if (fn_col %in% colnames(row))
       trimws(as.character(row[[fn_col]][1])) else return(NULL)
-    
     local_path <- file.path(root, p, paste0(filename, ".wav"))
     root_esc   <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", root)
     paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
   }
   
-  # ── Add time bins ─────────────────────────────────────────────────────────────
   add_time_bins <- function(df, time_range) {
-    time_col  <- cache_time_col()
-    plot_tr   <- if (!is.null(time_range)) time_range else c(0, 1439)
-    df        <- apply_time_filter(df, plot_tr)
+    time_col <- cache_time_col()
+    plot_tr  <- if (!is.null(time_range)) time_range else c(0, 1440)
+    df       <- apply_time_filter(df, plot_tr)
     df %>%
       mutate(
         Time_posix = as.POSIXct(
@@ -258,7 +246,6 @@ function(input, output, session) {
       )
   }
   
-  # ── Build now playing info ────────────────────────────────────────────────────
   build_now_playing <- function(row, url) {
     meta_info <- paste(
       sapply(cache_meta_cols(), function(col) {
@@ -269,7 +256,6 @@ function(input, output, session) {
       }),
       collapse = "<br>"
     )
-    
     pc_cols    <- grep("^PC", colnames(row), value = TRUE)
     inds       <- input$selected_indices
     active_pcs <- unique(c(
@@ -278,7 +264,6 @@ function(input, output, session) {
       if (!is.null(input$pca_z)) input$pca_z
     ))
     active_pcs <- active_pcs[active_pcs %in% pc_cols]
-    
     value_info <- if (length(active_pcs) > 0) {
       paste(sapply(active_pcs, function(pc) {
         paste0("<span style='color:#bbb; font-size:10px;'>", pc,
@@ -292,22 +277,18 @@ function(input, output, session) {
         else NULL
       }), collapse = "<br>")
     } else ""
-    
     divider <- if (nchar(meta_info) > 0 && nchar(value_info) > 0)
       "<br><span style='color:#e0e0dc; font-size:10px;'>--</span><br>"
     else ""
-    
     paste0("<strong style='font-size:12px;'>", basename(url),
            "</strong><br>", meta_info, divider, value_info)
   }
   
   # ── Core data reactives ───────────────────────────────────────────────────────
-  
-  # analysis_data: date + time + analysis meta filters
   analysis_data <- reactive({
     df <- cache_df()
     req(df)
-    anal_tr <- if (!is.null(input$time_range)) input$time_range else c(0, 1439)
+    anal_tr <- if (!is.null(input$time_range)) input$time_range else c(0, 1440)
     df <- apply_date_filter(df, input$date_from, input$date_to)
     df <- apply_time_filter(df, anal_tr)
     df <- apply_analysis_meta_filters(df)
@@ -315,26 +296,27 @@ function(input, output, session) {
     df
   })
   
-  # full_pca_data: runs PCA on date + analysis meta filtered data (no time filter)
   full_pca_data <- reactive({
     df <- cache_df()
     req(df)
     inds <- input$selected_indices
     if (is.null(inds) || length(inds) <= 3) return(NULL)
-    df     <- apply_date_filter(df, input$date_from, input$date_to)
-    df     <- apply_analysis_meta_filters(df)
-    pca    <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
-    scores <- as.data.frame(pca$x)
-    scores <- bind_cols(df,
-                        scores[, !(names(scores) %in% names(df)), drop = FALSE])
+    anal_tr <- if (!is.null(input$time_range)) input$time_range else c(0, 1440)
+    df      <- apply_date_filter(df, input$date_from, input$date_to)
+    df      <- apply_time_filter(df, anal_tr)
+    df      <- apply_analysis_meta_filters(df)
+    pca     <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
+    scores  <- as.data.frame(pca$x)
+    scores  <- bind_cols(df,
+                         scores[, !(names(scores) %in% names(df)), drop = FALSE])
     list(scores = scores, pca = pca)
   })
   
-  # plot_data: applies plot-level filters on top of PCA scores
   plot_data <- reactive({
     inds    <- input$selected_indices
     n       <- length(inds)
-    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range else c(0, 1439)
+    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range
+    else c(0, 1440)
     
     if (n <= 3) {
       df <- cache_df()
@@ -348,7 +330,6 @@ function(input, output, session) {
     
     req(full_pca_data())
     scores <- full_pca_data()$scores
-    
     scores <- apply_date_filter(scores, input$plot_date_from, input$plot_date_to)
     scores <- apply_plot_meta_filters(scores)
     scores <- apply_time_filter(scores, plot_tr)
@@ -356,7 +337,6 @@ function(input, output, session) {
     scores
   })
   
-  # ── Palette helper ────────────────────────────────────────────────────────────
   get_palette <- function(df, colvar) {
     vals <- unique(as.character(df[[colvar]]))
     base_cols <- c(
@@ -367,7 +347,6 @@ function(input, output, session) {
     setNames(rep_len(base_cols, length(vals)), vals)
   }
   
-  # ── Hover text builders ───────────────────────────────────────────────────────
   make_text_2d <- function(d, i1, i2, colvar, date_col, time_fmt_col) {
     paste0(colvar, ": ", d[[colvar]],
            "<br>", i1, ": ", round(d[[i1]], 3),
@@ -456,7 +435,8 @@ function(input, output, session) {
     data$Time_fmt <- if (time_col %in% colnames(data))
       sprintf("%06d", as.numeric(data[[time_col]])) else ""
     
-    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range else c(0, 1439)
+    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range
+    else c(0, 1440)
     
     if (n_inds == 1) {
       p <- plot_ly(data,
@@ -610,26 +590,28 @@ function(input, output, session) {
     session$sendCustomMessage("compute_done", list(is_corr = FALSE))
     
     p %>%
-      layout(
-        legend = list(
-          x = 1, y = 1, xanchor = "right", yanchor = "top",
-          bgcolor = "rgba(255,255,255,0.85)", borderwidth = 0,
-          font = list(size = 10), traceorder = "normal",
-          itemsizing = "constant"
-        ),
-        source = "main"
-      ) %>%
+      layout(legend = list(
+        x = 1, y = 1, xanchor = "right", yanchor = "top",
+        bgcolor = "rgba(255,255,255,0.85)", borderwidth = 0,
+        font = list(size = 10), traceorder = "normal",
+        itemsizing = "constant"
+      )) %>%
       event_register("plotly_click")
   })
   
-  # ── Correlation plot ──────────────────────────────────────────────────────────
+  output$main_plot <- renderPlotly({
+    p <- plot_results()
+    if (is.null(p)) return(NULL)
+    p$x$source <- "main"
+    p
+  })
+  
   output$corr_plot <- renderPlot({
     req(bottom_trigger() > 0)
     req(cache_applied())
     req(isolate(input$plot_type) == "Index Correlation")
     
     inds <- isolate(input$selected_indices)
-    
     if (is.null(inds) || length(inds) < 2) {
       plot.new()
       text(0.5, 0.5, "Select at least 2 indices.",
@@ -639,14 +621,11 @@ function(input, output, session) {
     }
     
     data <- isolate(analysis_data())
-    
     if (nrow(data) > 5000) {
       set.seed(42)
       data <- data[sample(nrow(data), 5000), ]
-      showNotification(
-        "Correlation plot based on random sample of 5,000 rows.",
-        type = "message", duration = 4
-      )
+      showNotification("Correlation plot based on random sample of 5,000 rows.",
+                       type = "message", duration = 4)
     }
     
     plot_data_corr <- data[, inds, drop = FALSE]
@@ -662,18 +641,12 @@ function(input, output, session) {
     
     p <- GGally::ggpairs(
       plot_data_corr,
-      upper = list(continuous = GGally::wrap("cor",
-                                             method = "pearson",
-                                             size   = 3.5,
-                                             color  = "#333")),
-      lower = list(continuous = GGally::wrap("points",
-                                             alpha = 0.15,
-                                             size  = 0.4,
-                                             color = "#4DBBD5")),
-      diag  = list(continuous = GGally::wrap("densityDiag",
-                                             fill      = "#f7f7f5",
-                                             color     = "#666",
-                                             linewidth = 0.6))
+      upper = list(continuous = GGally::wrap("cor", method = "pearson",
+                                             size = 3.5, color = "#333")),
+      lower = list(continuous = GGally::wrap("points", alpha = 0.15,
+                                             size = 0.4, color = "#4DBBD5")),
+      diag  = list(continuous = GGally::wrap("densityDiag", fill = "#f7f7f5",
+                                             color = "#666", linewidth = 0.6))
     ) +
       theme_minimal(base_size = 10) +
       theme(
@@ -690,7 +663,6 @@ function(input, output, session) {
   }, bg = "transparent")
   outputOptions(output, "corr_plot", suspendWhenHidden = FALSE)
   
-  # ── Correlation download ──────────────────────────────────────────────────────
   output$download_corr <- downloadHandler(
     filename = function() paste0("correlation_", Sys.Date(), ".png"),
     content = function(file) {
@@ -704,7 +676,6 @@ function(input, output, session) {
     }
   )
   
-  # ── PCA axis reset ────────────────────────────────────────────────────────────
   observeEvent(input$plot_type, {
     if (input$plot_type == "Scatter 3D") {
       updateSelectInput(session, "pca_x", selected = "PC1")
@@ -720,9 +691,6 @@ function(input, output, session) {
     }
   })
   
-  output$main_plot <- renderPlotly(plot_results())
-  
-  # ── PCA summary ───────────────────────────────────────────────────────────────
   output$pca_summary <- renderPrint({
     req(bottom_trigger() > 0)
     inds <- isolate(input$selected_indices)
@@ -739,7 +707,6 @@ function(input, output, session) {
   })
   outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
   
-  # ── Summary statistics ────────────────────────────────────────────────────────
   output$summary_stats <- renderUI({
     req(bottom_trigger() > 0)
     req(cache_applied())
@@ -852,7 +819,26 @@ function(input, output, session) {
   })
   outputOptions(output, "summary_stats", suspendWhenHidden = FALSE)
   
-  # ── PCA export ────────────────────────────────────────────────────────────────
+  output$time_range_label <- renderUI({
+    req(input$time_range)
+    lo <- minutes_to_label(input$time_range[1])
+    hi <- minutes_to_label(input$time_range[2])
+    div(paste0(lo, " - ", hi),
+        style = "font-size: 10px; color: #888; text-align: center;
+               margin-top: -6px; margin-bottom: 4px;")
+  })
+  outputOptions(output, "time_range_label", suspendWhenHidden = FALSE)
+  
+  output$plot_time_range_label <- renderUI({
+    req(input$plot_time_range)
+    lo <- minutes_to_label(input$plot_time_range[1])
+    hi <- minutes_to_label(input$plot_time_range[2])
+    div(paste0(lo, " - ", hi),
+        style = "font-size: 10px; color: #888; text-align: center;
+               margin-top: -6px; margin-bottom: 4px;")
+  })
+  outputOptions(output, "plot_time_range_label", suspendWhenHidden = FALSE)
+  
   output$download_pca <- downloadHandler(
     filename = function() paste0("PCA_export_", Sys.Date(), ".csv"),
     content = function(file) {
@@ -875,7 +861,6 @@ function(input, output, session) {
     }
   )
   
-  # ── Audio click ───────────────────────────────────────────────────────────────
   observe({
     click <- event_data("plotly_click", source = "main")
     if (is.null(click)) return()
@@ -889,23 +874,19 @@ function(input, output, session) {
     inds         <- input$selected_indices
     n_inds       <- length(inds)
     plot_tr      <- if (!is.null(input$plot_time_range)) input$plot_time_range
-    else c(0, 1439)
+    else c(0, 1440)
     
     if (!is.null(click$key)) {
       composite_key <- click$key
       if (is.null(composite_key) || is.na(composite_key) ||
           composite_key == "NA") return()
-      
       df <- plot_data()
       if (is.null(df)) return()
-      
       row_idx <- which(df$.row_key == composite_key)
       if (length(row_idx) == 0) return()
-      
       row <- df[row_idx[1], ]
       url <- resolve_audio_path(row)
       if (is.null(url)) return()
-      
       current_audio(url)
       session$sendCustomMessage("update_now_playing",
                                 list(info = build_now_playing(row, url)))
@@ -925,10 +906,8 @@ function(input, output, session) {
                  input$plot_type %in% c("Diel Line 2D", "Diel Line 3D")) {
         scores <- plot_data()
         req(scores)
-        
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
-        
         scores       <- add_time_bins(scores, plot_tr)
         clicked_time <- as.character(click$x)
         candidates   <- scores %>% filter(Time_label == clicked_time)
@@ -980,7 +959,6 @@ function(input, output, session) {
     }
   })
   
-  # ── Open file in Finder/Explorer ──────────────────────────────────────────────
   observeEvent(input$open_file, {
     url  <- current_audio()
     if (is.null(url)) return()
