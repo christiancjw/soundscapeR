@@ -329,25 +329,21 @@ function switchTab(tab) {
   if (tab === 'analysis') setTimeout(applyLayout, 50);
 }
 
-// ── PAL — Palette management (all DOM work done here, no R re-renders) ────────
+// ── PAL — Palette management ──────────────────────────────────────────────────
 var PAL = (function() {
 
-  // Track current preset per column, in JS only
-  var currentPreset = {};
+  var currentPreset = {};  // col -> active preset name
+  var dragSrc       = null; // the row being dragged
 
-  // Sanitise a string for use in an element ID
   function sid(str) {
     return str.replace(/[^a-zA-Z0-9]/g, '_');
   }
 
-  // Build the element ID for a colour input
-  // MUST match what mod_palette.R builds:
-  //   paste0(ns_str, "col_", sid(col), "_lv_", sid(lv))
   function inputId(ns_str, col, lv) {
     return ns_str + 'col_' + sid(col) + '_lv_' + sid(lv);
   }
 
-  // Update colour inputs + hex labels from a colours object {level: hex}
+  // Update colour inputs + hex labels from {level: hex} object
   function updateInputs(ns_str, col, coloursObj) {
     Object.keys(coloursObj).forEach(function(lv) {
       var id    = inputId(ns_str, col, lv);
@@ -359,7 +355,7 @@ var PAL = (function() {
     });
   }
 
-  // Highlight the active preset button, un-highlight all others
+  // Highlight active preset button
   function highlightPreset(col, presetName) {
     var safeCol = sid(col);
     document.querySelectorAll('[id^="pal_pbtn_' + safeCol + '_"]')
@@ -374,8 +370,7 @@ var PAL = (function() {
     currentPreset[col] = presetName;
   }
 
-  // Called from preset button onclick
-  // Updates DOM immediately, then tells R (R does nothing with this)
+  // Apply a named preset — updates DOM only, no R re-render
   function applyPreset(shinyId, ns_str, col, presetName, coloursObj) {
     updateInputs(ns_str, col, coloursObj);
     highlightPreset(col, presetName);
@@ -383,7 +378,7 @@ var PAL = (function() {
       {col: col, preset: presetName}, {priority: 'event'});
   }
 
-  // Called from Custom button onclick
+  // Load saved custom colours
   function loadCustom(shinyId, ns_str, col, coloursObj) {
     if (Object.keys(coloursObj).length > 0) {
       updateInputs(ns_str, col, coloursObj);
@@ -392,7 +387,7 @@ var PAL = (function() {
     Shiny.setInputValue(shinyId, col, {priority: 'event'});
   }
 
-  // Called from oninput on colour picker
+  // Colour picker changed manually
   function colourChanged(ns_str, col, lv, newValue) {
     var id    = inputId(ns_str, col, lv);
     var hexEl = document.getElementById(id + '_hex');
@@ -402,26 +397,95 @@ var PAL = (function() {
                         {priority: 'event'});
   }
 
-  // Called from Save button onclick
-  // Reads all colour inputs for this col and sends to R
-  function save(shinyId, ns_str, col, levels) {
-    var colours   = {};
-    var is_custom = (currentPreset[col] === 'Custom');
-    levels.forEach(function(lv) {
+  // Save — reads current DOM order and colour values, sends to R
+  function save(shinyId, ns_str, col, listId) {
+    var container = document.getElementById(listId);
+    if (!container) return;
+
+    var rows        = Array.from(container.children);
+    var colours     = {};
+    var level_order = [];
+    var is_custom   = (currentPreset[col] === 'Custom');
+
+    rows.forEach(function(row) {
+      var lv = row.getAttribute('data-level');
+      if (!lv) return;
+      level_order.push(lv);
       var el = document.getElementById(inputId(ns_str, col, lv));
       colours[lv] = el ? el.value : '#4DBBD5';
     });
+
     Shiny.setInputValue(shinyId,
-      {col: col, colours: colours, is_custom: is_custom},
+      {col: col, colours: colours, level_order: level_order,
+       is_custom: is_custom},
       {priority: 'event'});
   }
 
-  // Public API
+  // ── Drag and drop ───────────────────────────────────────────────────────────
+
+  function dragStart(event, listId) {
+    // Walk up to find the draggable row (the div with data-level)
+    var target = event.target;
+    while (target && !target.getAttribute('data-level')) {
+      target = target.parentElement;
+    }
+    if (!target) return;
+
+    dragSrc = target;
+    dragSrc.style.opacity = '0.4';
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', listId);
+  }
+
+  function dragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+
+    // Find the row being hovered over
+    var target = event.target;
+    while (target && !target.getAttribute('data-level')) {
+      target = target.parentElement;
+    }
+    if (!target || target === dragSrc) return;
+
+    // Insert dragSrc before or after target based on cursor position
+    var rect    = target.getBoundingClientRect();
+    var midY    = rect.top + rect.height / 2;
+    var parent  = target.parentNode;
+
+    if (event.clientY < midY) {
+      parent.insertBefore(dragSrc, target);
+    } else {
+      parent.insertBefore(dragSrc, target.nextSibling);
+    }
+  }
+
+  function drop(event, listId) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function dragEnd(event) {
+    if (dragSrc) {
+      dragSrc.style.opacity = '1';
+      dragSrc = null;
+    }
+    // Remove any hover highlights
+    document.querySelectorAll('[data-level]').forEach(function(row) {
+      row.style.borderTop    = '';
+      row.style.borderBottom = '';
+    });
+  }
+
   return {
     applyPreset:   applyPreset,
     loadCustom:    loadCustom,
     colourChanged: colourChanged,
-    save:          save
+    save:          save,
+    dragStart:     dragStart,
+    dragOver:      dragOver,
+    drop:          drop,
+    dragEnd:       dragEnd
   };
 
 })();

@@ -25,7 +25,6 @@ PALETTE_PRESETS <- list(
   )
 )
 
-# Sanitise any string for use in an HTML id
 sid <- function(...) gsub("[^a-zA-Z0-9]", "_", paste0(...))
 
 paletteUI <- function(id) {
@@ -40,8 +39,9 @@ paletteServer <- function(id, active_config, app_data) {
     reactive_palettes <- reactiveVal(list())
     saved_custom      <- reactiveVal(list())
     selected_col      <- reactiveVal(NULL)
+    saved_order       <- reactiveVal(list())
     
-    # ── Load palettes from config on project open ───────────────────────────
+    # ── Load from config ─────────────────────────────────────────────────────
     observeEvent(active_config(), {
       cfg <- active_config()
       req(cfg)
@@ -49,22 +49,27 @@ paletteServer <- function(id, active_config, app_data) {
       if (is.null(saved) || length(saved) == 0) {
         reactive_palettes(list())
         saved_custom(list())
+        saved_order(list())
         return()
       }
       parsed  <- list()
       customs <- list()
+      orders  <- list()
       for (col in names(saved)) {
         p <- saved[[col]]
         if (isTRUE(p$active) && length(p$colours) > 0)
           parsed[[col]] <- unlist(p$colours)
         if (length(p$custom_colours) > 0)
           customs[[col]] <- unlist(p$custom_colours)
+        if (length(p$level_order) > 0)
+          orders[[col]] <- unlist(p$level_order)
       }
       reactive_palettes(parsed)
       saved_custom(customs)
+      saved_order(orders)
     })
     
-    # ── Select first metadata col when data loads ───────────────────────────
+    # ── Set first col on data load ───────────────────────────────────────────
     observeEvent(app_data(), {
       ad <- app_data()
       req(ad)
@@ -72,7 +77,7 @@ paletteServer <- function(id, active_config, app_data) {
       if (length(fcols) > 0) selected_col(fcols[1])
     })
     
-    # ── Outer card — column tab buttons ────────────────────────────────────
+    # ── Outer card ───────────────────────────────────────────────────────────
     output$palette_card <- renderUI({
       cfg <- active_config()
       if (is.null(cfg)) return(NULL)
@@ -102,7 +107,6 @@ paletteServer <- function(id, active_config, app_data) {
               "Assign a custom palette per metadata column. ",
               "Columns without a custom palette use NPG by default."
           ),
-          # Column tabs
           div(style = "display:flex; gap:4px; flex-wrap:wrap; margin-bottom:12px;",
               lapply(fcols, function(col) {
                 is_active <- !is.null(pals[[col]])
@@ -110,7 +114,8 @@ paletteServer <- function(id, active_config, app_data) {
                 tags$button(
                   style = paste0(
                     "font-size:10px; padding:3px 10px; border-radius:4px; ",
-                    "border:0.5px solid ", if (is_sel) "#1a56db" else "#d0d0cc", "; ",
+                    "border:0.5px solid ",
+                    if (is_sel) "#1a56db" else "#d0d0cc", "; ",
                     "background:", if (is_sel) "#e8f0fe" else "white", "; ",
                     "color:", if (is_sel) "#1a56db" else "#666", "; ",
                     "cursor:pointer; display:flex; align-items:center; gap:5px;"
@@ -134,9 +139,7 @@ paletteServer <- function(id, active_config, app_data) {
     
     observeEvent(input$selected_col, selected_col(input$selected_col))
     
-    # ── Per-column editor ───────────────────────────────────────────────────
-    # IMPORTANT: active_preset is NOT a reactive dependency here.
-    # Preset highlighting is managed entirely by JS to avoid re-render loops.
+    # ── Column editor ────────────────────────────────────────────────────────
     output$col_editor <- renderUI({
       ad  <- app_data()
       cfg <- active_config()
@@ -145,17 +148,27 @@ paletteServer <- function(id, active_config, app_data) {
       col <- selected_col()
       req(col, col %in% colnames(ad$df))
       
-      levels_vec <- sort(unique(as.character(ad$df[[col]])))
+      all_levels <- sort(unique(as.character(ad$df[[col]])))
+      orders     <- saved_order()
       pals       <- reactive_palettes()
       customs    <- saved_custom()
       is_active  <- !is.null(pals[[col]])
       
+      # Apply saved level order — keep only existing levels, append new ones
+      levels_vec <- if (!is.null(orders[[col]]) && length(orders[[col]]) > 0) {
+        saved_lvs <- orders[[col]]
+        c(saved_lvs[saved_lvs %in% all_levels],
+          setdiff(all_levels, saved_lvs))
+      } else {
+        all_levels
+      }
+      
       current_cols <- if (is_active) pals[[col]] else
         setNames(rep_len(PALETTE_PRESETS$NPG, length(levels_vec)), levels_vec)
       
-      # ns("") gives e.g. "setup-palette-"
       ns_str       <- ns("")
       preset_names <- c(names(PALETTE_PRESETS), "Custom")
+      list_id      <- paste0("pal_list_", sid(col))
       
       tagList(
         
@@ -165,7 +178,8 @@ paletteServer <- function(id, active_config, app_data) {
               "font-size:10px; padding:2px 8px; border-radius:10px; ",
               "background:", if (is_active) "#e6f4ee" else "#f0f0ec", "; ",
               "color:", if (is_active) "#0F6E56" else "#888", "; ",
-              "border:0.5px solid ", if (is_active) "#9FE1CB" else "#d0d0cc", ";"
+              "border:0.5px solid ",
+              if (is_active) "#9FE1CB" else "#d0d0cc", ";"
             ), if (is_active) "Custom palette active" else "Using default NPG"),
             if (is_active) tags$button("Deactivate",
                                        style = "font-size:10px; padding:2px 8px; border-radius:4px;
@@ -186,7 +200,6 @@ paletteServer <- function(id, active_config, app_data) {
                 lapply(preset_names, function(pname) {
                   is_custom <- pname == "Custom"
                   
-                  # Preview dots
                   dot_cols <- if (!is_custom) {
                     pc <- PALETTE_PRESETS[[pname]]
                     pc[1:min(5, length(pc))]
@@ -199,9 +212,7 @@ paletteServer <- function(id, active_config, app_data) {
                     div(style = paste0("width:10px; height:10px; ",
                                        "border-radius:2px; background:", hx, ";")))
                   
-                  # Build the onclick — all DOM work done in JS, no R re-render
                   btn_onclick <- if (!is_custom) {
-                    # Pass colours as JSON directly to JS
                     cols_json <- jsonlite::toJSON(
                       as.list(setNames(
                         rep_len(PALETTE_PRESETS[[pname]], length(levels_vec)),
@@ -249,47 +260,74 @@ paletteServer <- function(id, active_config, app_data) {
             )
         ),
         
-        # Per-level colour inputs
+        # Draggable level rows
         div(style = "margin-bottom:10px;",
-            div(style = "font-size:11px; color:#888; margin-bottom:5px;",
-                "2. Fine-tune individual levels"),
-            div(style = "background:#f7f7f5; border:0.5px solid #e0e0dc;
-                       border-radius:6px; padding:6px 10px;
-                       max-height:240px; overflow-y:auto;",
-                lapply(levels_vec, function(lv) {
-                  # ID scheme: ns_str + "col_" + sid(col) + "_lv_" + sid(lv)
-                  # This MUST match what PAL.updateInputs builds in JS
-                  el_id   <- paste0(ns_str, "col_", sid(col), "_lv_", sid(lv))
-                  cur_col <- if (!is.null(current_cols[[lv]]) &&
-                                 !is.na(current_cols[[lv]]))
-                    current_cols[[lv]] else "#4DBBD5"
+            div(style = "display:flex; justify-content:space-between;
+                       align-items:center; margin-bottom:5px;",
+                span(style = "font-size:11px; color:#888;",
+                     "2. Recolour and reorder levels"),
+                span(style = "font-size:10px; color:#bbb; font-style:italic;",
+                     "drag rows to reorder")
+            ),
+            div(
+              id    = list_id,
+              style = "background:#f7f7f5; border:0.5px solid #e0e0dc;
+                     border-radius:6px; padding:6px 10px;
+                     max-height:280px; overflow-y:auto;",
+              lapply(levels_vec, function(lv) {
+                el_id   <- paste0(ns_str, "col_", sid(col), "_lv_", sid(lv))
+                cur_col <- if (!is.null(current_cols[[lv]]) &&
+                               !is.na(current_cols[[lv]]))
+                  current_cols[[lv]] else "#4DBBD5"
+                
+                div(
+                  `data-level` = lv,
+                  draggable    = "true",
+                  style = "display:flex; align-items:center; gap:8px;
+                         padding:5px 0; border-bottom:0.5px solid #e0e0dc;
+                         cursor:grab; user-select:none; background:transparent;
+                         transition: opacity 0.15s;",
+                  ondragstart = paste0("PAL.dragStart(event,'", list_id, "')"),
+                  ondragover  = "PAL.dragOver(event)",
+                  ondrop      = paste0("PAL.drop(event,'", list_id, "')"),
+                  ondragend   = "PAL.dragEnd(event)",
                   
-                  div(style = "display:flex; align-items:center; gap:8px;
-                           padding:4px 0; border-bottom:0.5px solid #e0e0dc;",
-                      tags$input(
-                        type    = "color",
-                        id      = el_id,
-                        value   = cur_col,
-                        style   = "width:26px; height:26px; border:none; padding:0;
+                  # Drag handle (two vertical dots)
+                  span(
+                    style = "color:#ccc; font-size:13px; flex-shrink:0;
+                           line-height:1; letter-spacing:-2px;",
+                    HTML("&#8942;&#8942;")
+                  ),
+                  
+                  # Colour picker
+                  tags$input(
+                    type    = "color",
+                    id      = el_id,
+                    value   = cur_col,
+                    style   = "width:24px; height:24px; border:none; padding:0;
                              cursor:pointer; border-radius:3px; flex-shrink:0;
                              background:none;",
-                        oninput = paste0(
-                          "PAL.colourChanged('", ns_str, "','", col, "','", lv,
-                          "',this.value)"
-                        )
-                      ),
-                      span(style = "font-size:11px; color:#333; flex:1;", lv),
-                      span(
-                        id    = paste0(el_id, "_hex"),
-                        style = "font-size:10px; color:#aaa; font-family:monospace;",
-                        cur_col
-                      )
+                    oninput = paste0(
+                      "PAL.colourChanged('", ns_str, "','", col, "','", lv,
+                      "',this.value)"
+                    )
+                  ),
+                  
+                  # Level name
+                  span(style = "font-size:11px; color:#333; flex:1;", lv),
+                  
+                  # Hex display
+                  span(
+                    id    = paste0(el_id, "_hex"),
+                    style = "font-size:10px; color:#aaa; font-family:monospace;",
+                    cur_col
                   )
-                })
+                )
+              })
             )
         ),
         
-        # Save button
+        # Save
         div(style = "display:flex; gap:8px; align-items:center;",
             tags$button("3. Save palette",
                         style = "font-size:11px; padding:5px 16px; background:#1a56db;
@@ -299,7 +337,7 @@ paletteServer <- function(id, active_config, app_data) {
                           "'", ns("save_palette"), "',",
                           "'", ns_str, "',",
                           "'", col, "',",
-                          jsonlite::toJSON(levels_vec, auto_unbox = FALSE),
+                          "'", list_id, "'",
                           ")"
                         )
             ),
@@ -309,18 +347,18 @@ paletteServer <- function(id, active_config, app_data) {
     })
     outputOptions(output, "col_editor", suspendWhenHidden = FALSE)
     
-    # ── R observers — minimal, DOM work done by JS ──────────────────────────
-    
-    observeEvent(input$apply_preset,  {}) # JS handled, R just acknowledges
-    observeEvent(input$load_custom,   {}) # JS handled
-    observeEvent(input$switched_to_custom, {}) # JS handled
+    # ── Observers ────────────────────────────────────────────────────────────
+    observeEvent(input$apply_preset,       {})
+    observeEvent(input$load_custom,        {})
+    observeEvent(input$switched_to_custom, {})
     
     observeEvent(input$deactivate_col, {
       col  <- input$deactivate_col
       pals <- reactive_palettes()
       pals[[col]] <- NULL
       reactive_palettes(pals)
-      save_palettes_to_config(pals, saved_custom(), active_config())
+      save_palettes_to_config(pals, saved_custom(), saved_order(),
+                              active_config())
       output$save_status <- renderUI(
         div(style = "font-size:10px; color:#888;",
             paste0(col, " reset to default NPG."))
@@ -329,9 +367,10 @@ paletteServer <- function(id, active_config, app_data) {
     
     observeEvent(input$save_palette, {
       req(input$save_palette)
-      col       <- input$save_palette$col
-      colours   <- unlist(input$save_palette$colours)
-      is_custom <- isTRUE(input$save_palette$is_custom)
+      col         <- input$save_palette$col
+      colours     <- unlist(input$save_palette$colours)
+      level_order <- unlist(input$save_palette$level_order)
+      is_custom   <- isTRUE(input$save_palette$is_custom)
       req(col, length(colours) > 0)
       
       pals        <- reactive_palettes()
@@ -344,7 +383,11 @@ paletteServer <- function(id, active_config, app_data) {
         saved_custom(customs)
       }
       
-      save_palettes_to_config(pals, customs, active_config())
+      orders        <- saved_order()
+      orders[[col]] <- level_order
+      saved_order(orders)
+      
+      save_palettes_to_config(pals, customs, orders, active_config())
       
       output$save_status <- renderUI(
         div(style = "font-size:10px; color:#00A087;",
@@ -352,18 +395,20 @@ paletteServer <- function(id, active_config, app_data) {
       )
     })
     
-    # ── Write to config.json ────────────────────────────────────────────────
-    save_palettes_to_config <- function(pals, customs, cfg) {
+    # ── Write to config ──────────────────────────────────────────────────────
+    save_palettes_to_config <- function(pals, customs, orders, cfg) {
       req(cfg)
       proj_dir <- file.path(PROJECTS_ROOT, cfg$project_name)
-      all_cols <- unique(c(names(pals), names(customs)))
+      all_cols <- unique(c(names(pals), names(customs), names(orders)))
       pal_list <- setNames(lapply(all_cols, function(col) {
         list(
           active         = !is.null(pals[[col]]),
           colours        = if (!is.null(pals[[col]]))
             as.list(pals[[col]]) else list(),
           custom_colours = if (!is.null(customs[[col]]))
-            as.list(customs[[col]]) else list()
+            as.list(customs[[col]]) else list(),
+          level_order    = if (!is.null(orders[[col]]))
+            as.list(orders[[col]]) else list()
         )
       }), all_cols)
       cfg_current          <- read_config(proj_dir)

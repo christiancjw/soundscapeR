@@ -339,18 +339,27 @@ function(input, output, session) {
     scores
   })
   
-  get_palette <- function(df, colvar, custom_palettes = NULL) {
+  get_palette <- function(df, colvar, custom_palettes = NULL,
+                          palette_order = NULL) {
     vals <- unique(as.character(df[[colvar]]))
+    
+    # Apply saved level order if available for this column
+    if (!is.null(palette_order) && !is.null(palette_order[[colvar]]) &&
+        length(palette_order[[colvar]]) > 0) {
+      ord  <- palette_order[[colvar]]
+      # Keep only vals that exist, preserve order, append any unseen at end
+      vals <- c(ord[ord %in% vals], setdiff(vals, ord))
+    }
     
     # Use custom palette if active for this column
     if (!is.null(custom_palettes) && !is.null(custom_palettes[[colvar]])) {
       pal <- custom_palettes[[colvar]]
-      # Map known levels, fall back to NPG for any missing
       npg <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
                "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
-      assigned <- sapply(vals, function(v) {
-        if (!is.null(pal[v]) && !is.na(pal[v])) pal[v]
-        else npg[((which(vals == v) - 1) %% length(npg)) + 1]
+      assigned <- sapply(seq_along(vals), function(i) {
+        v <- vals[i]
+        if (!is.null(pal[v]) && !is.na(pal[v]) && nchar(pal[v]) > 0) pal[v]
+        else npg[((i - 1) %% length(npg)) + 1]
       })
       return(setNames(assigned, vals))
     }
@@ -360,6 +369,7 @@ function(input, output, session) {
                    "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
     setNames(rep_len(base_cols, length(vals)), vals)
   }
+  
   
   make_text_2d <- function(d, i1, i2, colvar, date_col, time_fmt_col) {
     paste0(colvar, ": ", d[[colvar]],
