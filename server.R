@@ -8,15 +8,18 @@ function(input, output, session) {
   corr_plot_obj  <- reactiveVal(NULL)
   bottom_trigger <- reactiveVal(0)
   
+  # ── Disable analysis tab on startup ──────────────────────────────────────────
   session$onFlushed(function() {
     session$sendCustomMessage("set_analysis_enabled", list(enabled = FALSE))
   }, once = TRUE)
   
-  active_config <- projectServer("project")
+  # ── Module wiring ─────────────────────────────────────────────────────────────
+  active_config     <- projectServer("project")
   setup_out         <- setupServer("setup", active_config)
   app_data          <- setup_out$app_data
   reactive_palettes <- setup_out$reactive_palettes
   
+  # ── Flat cache ────────────────────────────────────────────────────────────────
   cache_df             <- reactiveVal(NULL)
   cache_index_cols     <- reactiveVal(character(0))
   cache_meta_cols      <- reactiveVal(character(0))
@@ -75,10 +78,8 @@ function(input, output, session) {
                       min = min_date, max = max_date)
     }
     
-    updateSliderInput(session, "time_range",
-                      value = c(0, 1440))
-    updateSliderInput(session, "plot_time_range",
-                      value = c(0, 1440))
+    updateSliderInput(session, "time_range",      value = c(0, 1440))
+    updateSliderInput(session, "plot_time_range", value = c(0, 1440))
     
     filter_cols <- ad$meta_cols[!ad$meta_cols %in% c(ad$date_col, ad$time_col)]
     filter_cols <- filter_cols[sapply(filter_cols, function(col) {
@@ -121,10 +122,12 @@ function(input, output, session) {
     })
   })
   
+  # ── Fire bottom trigger on compute ───────────────────────────────────────────
   observeEvent(input$compute, {
     bottom_trigger(bottom_trigger() + 1)
   })
   
+  # ── Analysis lock message ─────────────────────────────────────────────────────
   output$analysis_lock_msg <- renderUI({
     if (cache_applied()) return(NULL)
     div(style = "padding: 2rem; text-align: center; color: #aaa; font-size: 13px;",
@@ -132,6 +135,16 @@ function(input, output, session) {
   })
   outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
   
+  # ── Diel bin label ────────────────────────────────────────────────────────────
+  output$diel_bin_label <- renderUI({
+    req(input$diel_bin_mins)
+    div(paste0(input$diel_bin_mins, " min bins"),
+        style = "font-size:10px; color:#888; text-align:center;
+                 margin-top:-6px; margin-bottom:4px;")
+  })
+  outputOptions(output, "diel_bin_label", suspendWhenHidden = FALSE)
+  
+  # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
     updateCheckboxGroupInput(session, "selected_indices",
                              selected = cache_index_cols())
@@ -232,19 +245,22 @@ function(input, output, session) {
     paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
   }
   
-  add_time_bins <- function(df, time_range) {
+  # ── Add time bins — uses diel_bin_mins slider ─────────────────────────────────
+  add_time_bins <- function(df, time_range, bin_mins = 30) {
     time_col <- cache_time_col()
     plot_tr  <- if (!is.null(time_range)) time_range else c(0, 1440)
     df       <- apply_time_filter(df, plot_tr)
     df %>%
       mutate(
-        Time_posix = as.POSIXct(
+        Time_posix  = as.POSIXct(
           sprintf("%06d", as.numeric(.data[[time_col]])),
           format = "%H%M%S", tz = "UTC"),
-        Time_bin   = floor((hour(Time_posix) * 60 +
-                              minute(Time_posix)) / 30) * 30,
-        Time_label = sprintf("%02d:%02d",
-                             Time_bin %/% 60, Time_bin %% 60)
+        Time_bin    = floor((hour(Time_posix) * 60 +
+                               minute(Time_posix)) / bin_mins) * bin_mins,
+        Time_centre = Time_bin + bin_mins / 2,
+        Time_label  = sprintf("%02d:%02d",
+                              Time_centre %/% 60,
+                              as.integer(Time_centre) %% 60)
       )
   }
   
@@ -284,6 +300,53 @@ function(input, output, session) {
     else ""
     paste0("<strong style='font-size:12px;'>", basename(url),
            "</strong><br>", meta_info, divider, value_info)
+  }
+  
+  # ── Palette helper ────────────────────────────────────────────────────────────
+  get_palette <- function(df, colvar, custom_palettes = NULL,
+                          palette_order = NULL) {
+    vals <- unique(as.character(df[[colvar]]))
+    
+    # Apply saved level order if available
+    if (!is.null(palette_order) && !is.null(palette_order[[colvar]])) {
+      raw <- palette_order[[colvar]]
+      ord <- if (is.list(raw) && !is.null(raw$level_order))
+        unlist(raw$level_order)
+      else
+        unlist(raw)
+      if (length(ord) > 0) {
+        vals <- c(ord[ord %in% vals], setdiff(vals, ord))
+      }
+    }
+    
+    # Extract custom palette colours
+    pal <- NULL
+    if (!is.null(custom_palettes) && !is.null(custom_palettes[[colvar]])) {
+      pal_raw <- custom_palettes[[colvar]]
+      pal <- if (is.list(pal_raw) && !is.null(pal_raw$colours)) {
+        unlist(pal_raw$colours)
+      } else {
+        unlist(pal_raw)
+      }
+      if (length(pal) == 0) pal <- NULL
+    }
+    
+    # Use custom palette if valid
+    if (!is.null(pal)) {
+      npg <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
+               "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
+      assigned <- sapply(seq_along(vals), function(i) {
+        v <- vals[i]
+        if (!is.null(pal[v]) && !is.na(pal[v]) && nchar(pal[v]) > 0) pal[v]
+        else npg[((i - 1) %% length(npg)) + 1]
+      })
+      return(setNames(assigned, vals))
+    }
+    
+    # Default NPG
+    base_cols <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
+                   "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
+    setNames(rep_len(base_cols, length(vals)), vals)
   }
   
   # ── Core data reactives ───────────────────────────────────────────────────────
@@ -339,38 +402,7 @@ function(input, output, session) {
     scores
   })
   
-  get_palette <- function(df, colvar, custom_palettes = NULL,
-                          palette_order = NULL) {
-    vals <- unique(as.character(df[[colvar]]))
-    
-    # Apply saved level order if available for this column
-    if (!is.null(palette_order) && !is.null(palette_order[[colvar]]) &&
-        length(palette_order[[colvar]]) > 0) {
-      ord  <- palette_order[[colvar]]
-      # Keep only vals that exist, preserve order, append any unseen at end
-      vals <- c(ord[ord %in% vals], setdiff(vals, ord))
-    }
-    
-    # Use custom palette if active for this column
-    if (!is.null(custom_palettes) && !is.null(custom_palettes[[colvar]])) {
-      pal <- custom_palettes[[colvar]]
-      npg <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
-               "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
-      assigned <- sapply(seq_along(vals), function(i) {
-        v <- vals[i]
-        if (!is.null(pal[v]) && !is.na(pal[v]) && nchar(pal[v]) > 0) pal[v]
-        else npg[((i - 1) %% length(npg)) + 1]
-      })
-      return(setNames(assigned, vals))
-    }
-    
-    # Default NPG
-    base_cols <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
-                   "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
-    setNames(rep_len(base_cols, length(vals)), vals)
-  }
-  
-  
+  # ── Hover text builders ───────────────────────────────────────────────────────
   make_text_2d <- function(d, i1, i2, colvar, date_col, time_fmt_col) {
     paste0(colvar, ": ", d[[colvar]],
            "<br>", i1, ": ", round(d[[i1]], 3),
@@ -444,9 +476,12 @@ function(input, output, session) {
       return(NULL)
     }
     
+    cfg        <- active_config()
+    pal_config <- if (!is.null(cfg)) cfg$palettes else NULL
+    
     if (!is.null(colvar) && colvar %in% colnames(data)) {
       color_vec <- factor(data[[colvar]])
-      pal <- get_palette(data, colvar, reactive_palettes())
+      pal       <- get_palette(data, colvar, reactive_palettes(), pal_config)
     } else {
       color_vec <- factor(rep("data", nrow(data)))
       pal       <- c("data" = "#4DBBD5")
@@ -459,8 +494,9 @@ function(input, output, session) {
     data$Time_fmt <- if (time_col %in% colnames(data))
       sprintf("%06d", as.numeric(data[[time_col]])) else ""
     
-    plot_tr <- if (!is.null(input$plot_time_range)) input$plot_time_range
+    plot_tr  <- if (!is.null(input$plot_time_range)) input$plot_time_range
     else c(0, 1440)
+    bin_mins <- if (!is.null(input$diel_bin_mins)) input$diel_bin_mins else 30
     
     if (n_inds == 1) {
       p <- plot_ly(data,
@@ -557,7 +593,7 @@ function(input, output, session) {
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 2D") {
-        scores <- add_time_bins(scores, plot_tr)
+        scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         avg <- scores %>%
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
           summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
@@ -575,7 +611,7 @@ function(input, output, session) {
                  yaxis = list(title = ylab))
         
       } else if (input$plot_type == "Diel Line 3D") {
-        scores <- add_time_bins(scores, plot_tr)
+        scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         avg <- scores %>%
           group_by(Time_bin, Time_label, !!sym(colvar)) %>%
           summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
@@ -630,6 +666,7 @@ function(input, output, session) {
     p
   })
   
+  # ── Correlation plot ──────────────────────────────────────────────────────────
   output$corr_plot <- renderPlot({
     req(bottom_trigger() > 0)
     req(cache_applied())
@@ -700,6 +737,7 @@ function(input, output, session) {
     }
   )
   
+  # ── PCA axis reset ────────────────────────────────────────────────────────────
   observeEvent(input$plot_type, {
     if (input$plot_type == "Scatter 3D") {
       updateSelectInput(session, "pca_x", selected = "PC1")
@@ -715,6 +753,7 @@ function(input, output, session) {
     }
   })
   
+  # ── PCA summary ───────────────────────────────────────────────────────────────
   output$pca_summary <- renderPrint({
     req(bottom_trigger() > 0)
     inds <- isolate(input$selected_indices)
@@ -731,6 +770,7 @@ function(input, output, session) {
   })
   outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
   
+  # ── Summary statistics ────────────────────────────────────────────────────────
   output$summary_stats <- renderUI({
     req(bottom_trigger() > 0)
     req(cache_applied())
@@ -843,26 +883,7 @@ function(input, output, session) {
   })
   outputOptions(output, "summary_stats", suspendWhenHidden = FALSE)
   
-  output$time_range_label <- renderUI({
-    req(input$time_range)
-    lo <- minutes_to_label(input$time_range[1])
-    hi <- minutes_to_label(input$time_range[2])
-    div(paste0(lo, " - ", hi),
-        style = "font-size: 10px; color: #888; text-align: center;
-               margin-top: -6px; margin-bottom: 4px;")
-  })
-  outputOptions(output, "time_range_label", suspendWhenHidden = FALSE)
-  
-  output$plot_time_range_label <- renderUI({
-    req(input$plot_time_range)
-    lo <- minutes_to_label(input$plot_time_range[1])
-    hi <- minutes_to_label(input$plot_time_range[2])
-    div(paste0(lo, " - ", hi),
-        style = "font-size: 10px; color: #888; text-align: center;
-               margin-top: -6px; margin-bottom: 4px;")
-  })
-  outputOptions(output, "plot_time_range_label", suspendWhenHidden = FALSE)
-  
+  # ── PCA export ────────────────────────────────────────────────────────────────
   output$download_pca <- downloadHandler(
     filename = function() paste0("PCA_export_", Sys.Date(), ".csv"),
     content = function(file) {
@@ -885,6 +906,7 @@ function(input, output, session) {
     }
   )
   
+  # ── Audio click ───────────────────────────────────────────────────────────────
   observe({
     click <- event_data("plotly_click", source = "main")
     if (is.null(click)) return()
@@ -899,6 +921,7 @@ function(input, output, session) {
     n_inds       <- length(inds)
     plot_tr      <- if (!is.null(input$plot_time_range)) input$plot_time_range
     else c(0, 1440)
+    bin_mins     <- if (!is.null(input$diel_bin_mins)) input$diel_bin_mins else 30
     
     if (!is.null(click$key)) {
       composite_key <- click$key
@@ -932,7 +955,8 @@ function(input, output, session) {
         req(scores)
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
-        scores       <- add_time_bins(scores, plot_tr)
+        
+        scores       <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         clicked_time <- as.character(click$x)
         candidates   <- scores %>% filter(Time_label == clicked_time)
         if (nrow(candidates) == 0) return()
@@ -983,6 +1007,7 @@ function(input, output, session) {
     }
   })
   
+  # ── Open file ─────────────────────────────────────────────────────────────────
   observeEvent(input$open_file, {
     url  <- current_audio()
     if (is.null(url)) return()
