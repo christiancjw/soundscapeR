@@ -110,16 +110,13 @@ var plotSelected     = {};
 Shiny.addCustomMessageHandler('init_filters', function(msg) {
   filterCombos = msg.combos;
   filterCols   = msg.cols;
-
   analysisSelected = {};
   plotSelected     = {};
-
   filterCols.forEach(function(col) {
     var allVals = new Set(filterCombos.map(function(r) { return r[col]; }));
     analysisSelected[col] = new Set(allVals);
     plotSelected[col]     = new Set(allVals);
   });
-
   renderAnalysisFilters();
   renderPlotFilters();
   pushAnalysisFiltersToShiny();
@@ -261,11 +258,8 @@ function renderFilterBlock(container, cols, selected, availableFn, prefix) {
 
       cb.onchange = (function(c, v, sel, pref) {
         return function() {
-          if (this.checked) {
-            sel[c].add(v);
-          } else {
-            sel[c].delete(v);
-          }
+          if (this.checked) sel[c].add(v);
+          else              sel[c].delete(v);
           if (pref === 'analysis') {
             renderAnalysisFilters();
             pushAnalysisFiltersToShiny();
@@ -335,6 +329,103 @@ function switchTab(tab) {
   if (tab === 'analysis') setTimeout(applyLayout, 50);
 }
 
+// ── PAL — Palette management (all DOM work done here, no R re-renders) ────────
+var PAL = (function() {
+
+  // Track current preset per column, in JS only
+  var currentPreset = {};
+
+  // Sanitise a string for use in an element ID
+  function sid(str) {
+    return str.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  // Build the element ID for a colour input
+  // MUST match what mod_palette.R builds:
+  //   paste0(ns_str, "col_", sid(col), "_lv_", sid(lv))
+  function inputId(ns_str, col, lv) {
+    return ns_str + 'col_' + sid(col) + '_lv_' + sid(lv);
+  }
+
+  // Update colour inputs + hex labels from a colours object {level: hex}
+  function updateInputs(ns_str, col, coloursObj) {
+    Object.keys(coloursObj).forEach(function(lv) {
+      var id    = inputId(ns_str, col, lv);
+      var el    = document.getElementById(id);
+      var hexEl = document.getElementById(id + '_hex');
+      var hex   = coloursObj[lv];
+      if (el)    el.value          = hex;
+      if (hexEl) hexEl.textContent = hex;
+    });
+  }
+
+  // Highlight the active preset button, un-highlight all others
+  function highlightPreset(col, presetName) {
+    var safeCol = sid(col);
+    document.querySelectorAll('[id^="pal_pbtn_' + safeCol + '_"]')
+      .forEach(function(btn) {
+        var active = btn.id === 'pal_pbtn_' + safeCol + '_' + sid(presetName);
+        btn.style.border     = active ? '1.5px solid #1a56db'
+                                      : '0.5px solid #d0d0cc';
+        btn.style.background = active ? '#e8f0fe' : 'white';
+        var lbl = btn.querySelector('span:last-child');
+        if (lbl) lbl.style.color = active ? '#1a56db' : '#666';
+      });
+    currentPreset[col] = presetName;
+  }
+
+  // Called from preset button onclick
+  // Updates DOM immediately, then tells R (R does nothing with this)
+  function applyPreset(shinyId, ns_str, col, presetName, coloursObj) {
+    updateInputs(ns_str, col, coloursObj);
+    highlightPreset(col, presetName);
+    Shiny.setInputValue(shinyId,
+      {col: col, preset: presetName}, {priority: 'event'});
+  }
+
+  // Called from Custom button onclick
+  function loadCustom(shinyId, ns_str, col, coloursObj) {
+    if (Object.keys(coloursObj).length > 0) {
+      updateInputs(ns_str, col, coloursObj);
+    }
+    highlightPreset(col, 'Custom');
+    Shiny.setInputValue(shinyId, col, {priority: 'event'});
+  }
+
+  // Called from oninput on colour picker
+  function colourChanged(ns_str, col, lv, newValue) {
+    var id    = inputId(ns_str, col, lv);
+    var hexEl = document.getElementById(id + '_hex');
+    if (hexEl) hexEl.textContent = newValue;
+    highlightPreset(col, 'Custom');
+    Shiny.setInputValue(ns_str + 'switched_to_custom', col,
+                        {priority: 'event'});
+  }
+
+  // Called from Save button onclick
+  // Reads all colour inputs for this col and sends to R
+  function save(shinyId, ns_str, col, levels) {
+    var colours   = {};
+    var is_custom = (currentPreset[col] === 'Custom');
+    levels.forEach(function(lv) {
+      var el = document.getElementById(inputId(ns_str, col, lv));
+      colours[lv] = el ? el.value : '#4DBBD5';
+    });
+    Shiny.setInputValue(shinyId,
+      {col: col, colours: colours, is_custom: is_custom},
+      {priority: 'event'});
+  }
+
+  // Public API
+  return {
+    applyPreset:   applyPreset,
+    loadCustom:    loadCustom,
+    colourChanged: colourChanged,
+    save:          save
+  };
+
+})();
+
 // ── Main setup ────────────────────────────────────────────────────────────────
 $(document).ready(function() {
 
@@ -344,30 +435,39 @@ $(document).ready(function() {
   var vSplit         = document.getElementById('v_splitter');
   var resizeDragging = false;
 
-  resizeHandle.addEventListener('mousedown', function(e) {
-    resizeDragging = true;
-    resizeHandle.classList.add('dragging');
-    e.preventDefault();
-  });
+  if (resizeHandle) {
+    resizeHandle.addEventListener('mousedown', function(e) {
+      resizeDragging = true;
+      resizeHandle.classList.add('dragging');
+      e.preventDefault();
+    });
+  }
 
-  document.getElementById('compute').addEventListener('click', function() {
-    setComputing(true);
-  });
+  var computeBtn = document.getElementById('compute');
+  if (computeBtn) {
+    computeBtn.addEventListener('click', function() {
+      setComputing(true);
+    });
+  }
 
-  hSplit.addEventListener('mousedown', function(e) {
-    splitterState.dragging = 'h';
-    hSplit.classList.add('dragging');
-    e.preventDefault();
-  });
+  if (hSplit) {
+    hSplit.addEventListener('mousedown', function(e) {
+      splitterState.dragging = 'h';
+      hSplit.classList.add('dragging');
+      e.preventDefault();
+    });
+  }
 
-  vSplit.addEventListener('mousedown', function(e) {
-    splitterState.dragging = 'v';
-    vSplit.classList.add('dragging');
-    e.preventDefault();
-  });
+  if (vSplit) {
+    vSplit.addEventListener('mousedown', function(e) {
+      splitterState.dragging = 'v';
+      vSplit.classList.add('dragging');
+      e.preventDefault();
+    });
+  }
 
   document.addEventListener('mousemove', function(e) {
-    if (resizeDragging) {
+    if (resizeDragging && sidebar) {
       var newW = Math.min(400, Math.max(160, e.clientX));
       sidebar.style.width = newW + 'px';
       applyLayout();
@@ -375,6 +475,7 @@ $(document).ready(function() {
     }
     if (splitterState.dragging === 'h') {
       var analysis = document.getElementById('main_analysis');
+      if (!analysis) return;
       splitterState.plotPct = Math.min(0.85, Math.max(0.15,
         (e.clientY - analysis.getBoundingClientRect().top) /
         analysis.clientHeight));
@@ -382,6 +483,7 @@ $(document).ready(function() {
       resizePlotly();
     } else if (splitterState.dragging === 'v') {
       var bottomRow = document.getElementById('bottom_row');
+      if (!bottomRow) return;
       splitterState.leftPct = Math.min(0.85, Math.max(0.15,
         (e.clientX - bottomRow.getBoundingClientRect().left) /
         bottomRow.clientWidth));
@@ -393,12 +495,12 @@ $(document).ready(function() {
   document.addEventListener('mouseup', function() {
     if (resizeDragging) {
       resizeDragging = false;
-      resizeHandle.classList.remove('dragging');
+      if (resizeHandle) resizeHandle.classList.remove('dragging');
       resizePlotly();
     }
     if (splitterState.dragging) {
-      hSplit.classList.remove('dragging');
-      vSplit.classList.remove('dragging');
+      if (hSplit) hSplit.classList.remove('dragging');
+      if (vSplit) vSplit.classList.remove('dragging');
       splitterState.dragging = null;
       resizePlotly();
     }
@@ -447,11 +549,9 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('set_analysis_enabled', function(msg) {
     var tab = document.getElementById('tab_analysis');
-    if (msg.enabled) {
-      tab.classList.remove('disabled-tab');
-    } else {
-      tab.classList.add('disabled-tab');
-    }
+    if (!tab) return;
+    if (msg.enabled) tab.classList.remove('disabled-tab');
+    else             tab.classList.add('disabled-tab');
   });
 
 });

@@ -1,10 +1,12 @@
 # modules/mod_setup.R
+source("modules/mod_palette.R")
 
 setupUI <- function(id) {
   ns <- NS(id)
   tagList(
     uiOutput(ns("setup_title")),
-    uiOutput(ns("setup_body"))
+    uiOutput(ns("setup_body")),
+    paletteUI(ns("palette"))
   )
 }
 
@@ -150,7 +152,7 @@ setupServer <- function(id, active_config) {
       cfg <- active_config()
       req(cfg)
       
-      showNotification("Loading project…", id = "loading_msg", duration = NULL)
+      showNotification("Loading project...", id = "loading_msg", duration = NULL)
       
       df <- tryCatch(
         data.table::fread(cfg$csv_path, data.table = FALSE),
@@ -226,7 +228,7 @@ setupServer <- function(id, active_config) {
       cfg <- active_config()
       req(df, cfg)
       
-      showNotification("Applying…", id = "apply_msg", duration = NULL)
+      showNotification("Applying...", id = "apply_msg", duration = NULL)
       removeNotification("apply_msg")
       showNotification("Ready.", type = "message", duration = 2)
       
@@ -255,7 +257,7 @@ setupServer <- function(id, active_config) {
         nchar(cfg$filename_column) > 0
       if (!has_cols) return()
       
-      showNotification("Loading previous settings…",
+      showNotification("Loading previous settings...",
                        id = "auto_apply_msg", duration = NULL)
       removeNotification("auto_apply_msg")
       
@@ -292,7 +294,8 @@ setupServer <- function(id, active_config) {
       if (mode == "folder_structure") {
         pattern <- input$folder_structure
         tokens  <- regmatches(pattern,
-                              gregexpr("(?<=\\{)[^}]+(?=\\})", pattern, perl = TRUE))[[1]]
+                              gregexpr("(?<=\\{)[^}]+(?=\\})",
+                                       pattern, perl = TRUE))[[1]]
         missing_cols <- tokens[!tokens %in% colnames(df)]
         if (length(missing_cols) > 0) {
           showNotification(
@@ -302,7 +305,6 @@ setupServer <- function(id, active_config) {
           return()
         }
         
-        # Sample 200 rows and build paths only for those
         n_check    <- min(200, nrow(df))
         sample_idx <- sample(seq_len(nrow(df)), n_check)
         sample_df  <- df[sample_idx, ]
@@ -332,7 +334,7 @@ setupServer <- function(id, active_config) {
       
       showNotification(
         paste0(n_linked, "/", n_check, " sampled files found (", pct, "%)"),
-        type = if (n_missing == 0) "message" else "warning",
+        type     = if (n_missing == 0) "message" else "warning",
         duration = 5
       )
     })
@@ -378,6 +380,12 @@ setupServer <- function(id, active_config) {
       showNotification("Config saved.", type = "message", duration = 3)
     })
     
-    return(output_data)
+    # ── Palette module ─────────────────────────────────────────────────────────
+    reactive_palettes <- paletteServer("palette", active_config, output_data)
+    
+    return(list(
+      app_data          = output_data,
+      reactive_palettes = reactive_palettes
+    ))
   })
 }

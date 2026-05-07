@@ -13,7 +13,9 @@ function(input, output, session) {
   }, once = TRUE)
   
   active_config <- projectServer("project")
-  app_data      <- setupServer("setup", active_config)
+  setup_out         <- setupServer("setup", active_config)
+  app_data          <- setup_out$app_data
+  reactive_palettes <- setup_out$reactive_palettes
   
   cache_df             <- reactiveVal(NULL)
   cache_index_cols     <- reactiveVal(character(0))
@@ -337,13 +339,25 @@ function(input, output, session) {
     scores
   })
   
-  get_palette <- function(df, colvar) {
+  get_palette <- function(df, colvar, custom_palettes = NULL) {
     vals <- unique(as.character(df[[colvar]]))
-    base_cols <- c(
-      "#4DBBD5", "#E64B35", "#00A087", "#3C5488",
-      "#F39B7F", "#8491B4", "#91D1C2", "#DC0000",
-      "#7E6148", "#B09C85"
-    )
+    
+    # Use custom palette if active for this column
+    if (!is.null(custom_palettes) && !is.null(custom_palettes[[colvar]])) {
+      pal <- custom_palettes[[colvar]]
+      # Map known levels, fall back to NPG for any missing
+      npg <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
+               "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
+      assigned <- sapply(vals, function(v) {
+        if (!is.null(pal[v]) && !is.na(pal[v])) pal[v]
+        else npg[((which(vals == v) - 1) %% length(npg)) + 1]
+      })
+      return(setNames(assigned, vals))
+    }
+    
+    # Default NPG
+    base_cols <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
+                   "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
     setNames(rep_len(base_cols, length(vals)), vals)
   }
   
@@ -422,7 +436,7 @@ function(input, output, session) {
     
     if (!is.null(colvar) && colvar %in% colnames(data)) {
       color_vec <- factor(data[[colvar]])
-      pal       <- get_palette(data, colvar)
+      pal <- get_palette(data, colvar, reactive_palettes())
     } else {
       color_vec <- factor(rep("data", nrow(data)))
       pal       <- c("data" = "#4DBBD5")
