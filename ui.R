@@ -775,17 +775,15 @@ fluidPage(
                   ),
                   plotlyOutput("main_plot", height = "100%"),
                   div(id = "corr_overlay",
-                      div(style = "position: absolute; top: 8px; right: 8px; z-index: 20;",
-                          downloadButton("download_corr", "Save",
-                                         class = "btn-sm",
-                                         style = "font-size: 9px; padding: 2px 8px;
-                                      height: auto; line-height: 1.4;
-                                      display: none;",
-                                         id = "download_corr_btn")
-                      ),
                       div(id = "corr_loading", class = "corr-loading",
                           div(class = "spinner"),
-                          span("Computing correlation matrix...")
+                          div(style = "text-align:center;",
+                              div(style = "font-size:13px; color:#555; margin-bottom:6px;",
+                                  "Computing correlation matrix..."),
+                              div(id = "corr_progress_text",
+                                  style = "font-size:11px; color:#aaa;",
+                                  "This may take a moment for large datasets.")
+                          )
                       ),
                       div(id = "corr_plot_wrap",
                           style = "display: none; width: 100%; height: 100%;",
@@ -819,9 +817,7 @@ fluidPage(
                           div(class = "bl-tab active", "PCA Summary",
                               onclick = "switchBLTab('pca')"),
                           div(class = "bl-tab", "Summary Stats",
-                              onclick = "switchBLTab('stats')"),
-                          div(class = "bl-tab", "Correlation",
-                              onclick = "switchBLTab('corr_tab')")
+                              onclick = "switchBLTab('stats')")
                       ),
                       
                       div(id = "bl_pca", class = "bl-panel active",
@@ -839,13 +835,9 @@ fluidPage(
                       
                       div(id = "bl_stats", class = "bl-panel",
                           uiOutput("summary_stats")
-                      ),
-                      
-                      div(id = "bl_corr_tab", class = "bl-panel",
-                          div(style = "padding: 8px; font-size: 11px; color: #aaa;",
-                              "Switch plot type to 'Index Correlation' and click Compute
-                 to render the full correlation matrix above.")
                       )
+                  
+                    
                   ),
                   
                   div(id = "v_splitter"),

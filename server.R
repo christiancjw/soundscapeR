@@ -265,41 +265,63 @@ function(input, output, session) {
   }
   
   build_now_playing <- function(row, url) {
-    meta_info <- paste(
-      sapply(cache_meta_cols(), function(col) {
-        if (col %in% colnames(row))
-          paste0("<span style='color:#bbb; font-size:10px;'>", col,
-                 "</span> ", row[[col]][1])
-        else NULL
-      }),
-      collapse = "<br>"
+    meta_cols <- cache_meta_cols()
+    
+    # Left column — filename + metadata as "label: value" single lines
+    meta_items <- sapply(meta_cols, function(col) {
+      if (!col %in% colnames(row)) return(NULL)
+      paste0(
+        "<div style='white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>",
+        "<span style='color:#bbb;'>", col, ":</span> ",
+        row[[col]][1],
+        "</div>"
+      )
+    })
+    left_col <- paste0(
+      "<div style='font-weight:500; margin-bottom:3px; white-space:nowrap;
+                 overflow:hidden; text-overflow:ellipsis;'>",
+      basename(url),
+      "</div>",
+      paste(Filter(Negate(is.null), meta_items), collapse = "")
     )
+    
+    # Right column — PC or index values as "label: value" single lines
     pc_cols    <- grep("^PC", colnames(row), value = TRUE)
-    inds       <- input$selected_indices
     active_pcs <- unique(c(
       if (!is.null(input$pca_x)) input$pca_x,
       if (!is.null(input$pca_y)) input$pca_y,
       if (!is.null(input$pca_z)) input$pca_z
     ))
     active_pcs <- active_pcs[active_pcs %in% pc_cols]
-    value_info <- if (length(active_pcs) > 0) {
-      paste(sapply(active_pcs, function(pc) {
-        paste0("<span style='color:#bbb; font-size:10px;'>", pc,
-               "</span> ", round(row[[pc]][1], 3))
-      }), collapse = "<br>")
-    } else if (!is.null(inds) && length(inds) > 0) {
-      paste(sapply(inds, function(idx) {
-        if (idx %in% colnames(row))
-          paste0("<span style='color:#bbb; font-size:10px;'>", idx,
-                 "</span> ", round(as.numeric(row[[idx]][1]), 3))
-        else NULL
-      }), collapse = "<br>")
-    } else ""
-    divider <- if (nchar(meta_info) > 0 && nchar(value_info) > 0)
-      "<br><span style='color:#e0e0dc; font-size:10px;'>--</span><br>"
-    else ""
-    paste0("<strong style='font-size:12px;'>", basename(url),
-           "</strong><br>", meta_info, divider, value_info)
+    
+    value_items <- if (length(active_pcs) > 0) {
+      sapply(active_pcs, function(pc) {
+        paste0(
+          "<div><span style='color:#bbb;'>", pc, ":</span> ",
+          round(row[[pc]][1], 3), "</div>"
+        )
+      })
+    } else {
+      inds <- input$selected_indices
+      if (!is.null(inds) && length(inds) > 0) {
+        sapply(inds, function(idx) {
+          if (!idx %in% colnames(row)) return(NULL)
+          paste0(
+            "<div><span style='color:#bbb;'>", idx, ":</span> ",
+            round(as.numeric(row[[idx]][1]), 3), "</div>"
+          )
+        })
+      } else character(0)
+    }
+    right_col <- paste(Filter(Negate(is.null), value_items), collapse = "")
+    
+    paste0(
+      "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 12px;
+                 font-size:11px; line-height:1.6;'>",
+      "<div>", left_col, "</div>",
+      "<div>", right_col, "</div>",
+      "</div>"
+    )
   }
   
   # ── Palette helper ────────────────────────────────────────────────────────────
@@ -676,7 +698,7 @@ function(input, output, session) {
     if (is.null(inds) || length(inds) < 2) {
       plot.new()
       text(0.5, 0.5, "Select at least 2 indices.",
-           cex = 1.2, col = "#aaa", adj = 0.5)
+           cex = 1.4, col = "#aaa", adj = 0.5)
       session$sendCustomMessage("compute_done", list(is_corr = TRUE))
       return()
     }
@@ -695,47 +717,41 @@ function(input, output, session) {
     if (nrow(plot_data_corr) == 0) {
       plot.new()
       text(0.5, 0.5, "No complete cases available.",
-           cex = 1.2, col = "#aaa", adj = 0.5)
+           cex = 1.4, col = "#aaa", adj = 0.5)
       session$sendCustomMessage("compute_done", list(is_corr = TRUE))
       return()
     }
     
     p <- GGally::ggpairs(
       plot_data_corr,
-      upper = list(continuous = GGally::wrap("cor", method = "pearson",
-                                             size = 3.5, color = "#333")),
-      lower = list(continuous = GGally::wrap("points", alpha = 0.15,
-                                             size = 0.4, color = "#4DBBD5")),
-      diag  = list(continuous = GGally::wrap("densityDiag", fill = "#f7f7f5",
-                                             color = "#666", linewidth = 0.6))
+      upper = list(continuous = GGally::wrap("cor",
+                                             method    = "pearson",
+                                             size      = 5,
+                                             color     = "#111")),
+      lower = list(continuous = GGally::wrap("points",
+                                             alpha = 0.2,
+                                             size  = 0.6,
+                                             color = "#111")),
+      diag  = list(continuous = GGally::wrap("densityDiag",
+                                             fill      = "#f0f0ec",
+                                             color     = "#111",
+                                             linewidth = 0.8))
     ) +
-      theme_minimal(base_size = 10) +
+      theme_bw(base_size = 11) +
       theme(
         panel.grid.minor = element_blank(),
         panel.border     = element_rect(colour = "#e0e0dc",
-                                        fill = NA, linewidth = 0.4),
-        strip.text       = element_text(size = 9, colour = "#555"),
-        axis.text        = element_text(size = 7, colour = "#888")
+                                        fill = NA, linewidth = 0.5),
+        strip.text       = element_text(size = 10, colour = "#333"),
+        axis.text        = element_text(size = 8,  colour = "#555")
       )
     
     corr_plot_obj(p)
     session$sendCustomMessage("compute_done", list(is_corr = TRUE))
     p
   }, bg = "transparent")
-  outputOptions(output, "corr_plot", suspendWhenHidden = FALSE)
   
-  output$download_corr <- downloadHandler(
-    filename = function() paste0("correlation_", Sys.Date(), ".png"),
-    content = function(file) {
-      p <- corr_plot_obj()
-      if (is.null(p)) return(NULL)
-      w <- if (!is.null(input$corr_plot_width))  input$corr_plot_width  else 800
-      h <- if (!is.null(input$corr_plot_height)) input$corr_plot_height else 600
-      ggplot2::ggsave(file, plot = p, device = "png",
-                      width = w / 96, height = h / 96,
-                      units = "in", dpi = 96, bg = "white")
-    }
-  )
+
   
   # ── PCA axis reset ────────────────────────────────────────────────────────────
   observeEvent(input$plot_type, {
@@ -769,6 +785,8 @@ function(input, output, session) {
     }
   })
   outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
+  
+  
   
   # ── Summary statistics ────────────────────────────────────────────────────────
   output$summary_stats <- renderUI({
