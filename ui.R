@@ -672,20 +672,37 @@ fluidPage(
                                     selected = "PC2", width = "100%")
                     )
                   ),
+                  # Diel 2D and Boxplot — Y only
                   conditionalPanel(
                     condition = "input.plot_type == 'Diel Line 2D' ||
-                         input.plot_type == 'Diel Line 3D' ||
-                         input.plot_type == 'Boxplot'",
+               input.plot_type == 'Boxplot'",
                     span(class = "s-label", "PC axis"),
                     div(class = "pca-axes-row",
                         selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                    selected = "PC1", width = "100%"),
-                        conditionalPanel(
-                          condition = "input.plot_type == 'Diel Line 3D'",
-                          selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
-                                      selected = "PC2", width = "100%")
-                        )
+                                    selected = "PC1", width = "100%")
                     )
+                  ),
+                  
+                  # Diel 3D — Y and Z, equal width
+                  conditionalPanel(
+                    condition = "input.plot_type == 'Diel Line 3D'",
+                    span(class = "s-label", "PC axes"),
+                    div(class = "pca-axes-row",
+                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
+                                    selected = "PC1", width = "100%"),
+                        selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
+                                    selected = "PC2", width = "100%")
+                    )
+                  ),
+                  
+                  conditionalPanel(
+                    condition = "input.plot_type == 'Diel Line 2D' ||
+                                 input.plot_type == 'Diel Line 3D'",
+                    span(class = "s-label", "Time bin size"),
+                    sliderInput("diel_bin_mins", label = NULL,
+                                min = 5, max = 240, value = 30,
+                                step = 5, ticks = FALSE, width = "100%"),
+                    uiOutput("diel_bin_label")
                   ),
                   
                   # ── 4. Colour by ──────────────────────────────────────────────────
