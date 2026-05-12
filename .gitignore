@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 soundscapeR_projects/
-.soundscapeR_projects/
+/soundscapeR_projects/*
+/SoundscapeR/Soundscaper_projects/*
