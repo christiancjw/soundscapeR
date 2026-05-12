@@ -5,3 +5,5 @@
 soundscapeR_projects/
 /soundscapeR_projects/*
 /SoundscapeR/Soundscaper_projects/*
+
+!Soundscaper_projects/.gitkeep
