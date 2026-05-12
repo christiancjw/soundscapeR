@@ -41,8 +41,8 @@ function applyLayout() {
   var leftW   = Math.max(200, Math.round(availW * splitterState.leftPct));
   var rightW  = Math.max(200, availW - leftW);
 
-  bottomLeft.style.width       = leftW + 'px';
-  bottomLeft.style.flexShrink  = '0';
+  bottomLeft.style.width      = leftW + 'px';
+  bottomLeft.style.flexShrink = '0';
   bottomRight.style.width      = rightW + 'px';
   bottomRight.style.flexShrink = '0';
 
@@ -55,6 +55,19 @@ function resizePlotly() {
       Plotly.Plots.resize(p);
     });
   }, 30);
+}
+
+// ── Spectrogram resize ────────────────────────────────────────────────────────
+function resizeSpectrogram() {
+  var el = document.getElementById('spectrogram');
+  if (!el) return;
+  var newH = el.clientHeight;
+  if (newH < 10) return;
+  var canvas = el.querySelector('canvas');
+  if (canvas) {
+    canvas.style.height = newH + 'px';
+    canvas.height       = newH;
+  }
 }
 
 // ── Compute button state ──────────────────────────────────────────────────────
@@ -76,12 +89,8 @@ function setComputing(on) {
 Shiny.addCustomMessageHandler('compute_done', function(msg) {
   setComputing(false);
   if (msg.is_corr) {
-    document.getElementById('corr_loading').style.display     = 'none';
-    document.getElementById('corr_plot_wrap').style.display   = 'block';
-    document.getElementById('download_corr_btn').style.display = 'inline-block';
-    var pane = document.getElementById('plot_pane');
-    Shiny.setInputValue('corr_plot_width',  pane.clientWidth);
-    Shiny.setInputValue('corr_plot_height', pane.clientHeight);
+    document.getElementById('corr_loading').style.display   = 'none';
+    document.getElementById('corr_plot_wrap').style.display = 'block';
   }
 });
 
@@ -89,15 +98,12 @@ Shiny.addCustomMessageHandler('show_corr', function(msg) {
   var overlay  = document.getElementById('corr_overlay');
   var loading  = document.getElementById('corr_loading');
   var plotWrap = document.getElementById('corr_plot_wrap');
-  var dlBtn    = document.getElementById('download_corr_btn');
   if (msg.show) {
     overlay.style.display  = 'block';
     loading.style.display  = 'flex';
     plotWrap.style.display = 'none';
-    dlBtn.style.display    = 'none';
   } else {
     overlay.style.display  = 'none';
-    dlBtn.style.display    = 'none';
   }
 });
 
@@ -108,8 +114,8 @@ var analysisSelected = {};
 var plotSelected     = {};
 
 Shiny.addCustomMessageHandler('init_filters', function(msg) {
-  filterCombos = msg.combos;
-  filterCols   = msg.cols;
+  filterCombos     = msg.combos;
+  filterCols       = msg.cols;
   analysisSelected = {};
   plotSelected     = {};
   filterCols.forEach(function(col) {
@@ -186,19 +192,19 @@ function renderFilterBlock(container, cols, selected, availableFn, prefix) {
     )).sort();
 
     var header = document.createElement('div');
-    header.className = 'filter-header';
+    header.className    = 'filter-header';
     header.style.marginTop = '8px';
 
     var label = document.createElement('span');
-    label.className = 's-label';
+    label.className   = 's-label';
     label.style.margin = '0';
-    label.textContent = col;
+    label.textContent  = col;
 
     var links = document.createElement('div');
     links.className = 'filter-header-links';
 
     var allBtn = document.createElement('button');
-    allBtn.className = 'filter-link';
+    allBtn.className   = 'filter-link';
     allBtn.textContent = 'all';
     allBtn.onclick = (function(c, avail) {
       return function() {
@@ -215,7 +221,7 @@ function renderFilterBlock(container, cols, selected, availableFn, prefix) {
     })(col, Array.from(available));
 
     var noneBtn = document.createElement('button');
-    noneBtn.className = 'filter-link none';
+    noneBtn.className   = 'filter-link none';
     noneBtn.textContent = 'none';
     noneBtn.onclick = (function(c) {
       return function() {
@@ -290,8 +296,7 @@ function pushAnalysisFiltersToShiny() {
     var activeVals = Array.from(analysisSelected[col]).filter(function(v) {
       return available.has(v);
     });
-    Shiny.setInputValue('analysis_filter_' + col, activeVals,
-                        {priority: 'event'});
+    Shiny.setInputValue('analysis_filter_' + col, activeVals, {priority: 'event'});
   });
 }
 
@@ -301,8 +306,7 @@ function pushPlotFiltersToShiny() {
     var activeVals = Array.from(plotSelected[col]).filter(function(v) {
       return available.has(v);
     });
-    Shiny.setInputValue('plot_filter_' + col, activeVals,
-                        {priority: 'event'});
+    Shiny.setInputValue('plot_filter_' + col, activeVals, {priority: 'event'});
   });
 }
 
@@ -332,8 +336,8 @@ function switchTab(tab) {
 // ── PAL — Palette management ──────────────────────────────────────────────────
 var PAL = (function() {
 
-  var currentPreset = {};  // col -> active preset name
-  var dragSrc       = null; // the row being dragged
+  var currentPreset = {};
+  var dragSrc       = null;
 
   function sid(str) {
     return str.replace(/[^a-zA-Z0-9]/g, '_');
@@ -343,7 +347,6 @@ var PAL = (function() {
     return ns_str + 'col_' + sid(col) + '_lv_' + sid(lv);
   }
 
-  // Update colour inputs + hex labels from {level: hex} object
   function updateInputs(ns_str, col, coloursObj) {
     Object.keys(coloursObj).forEach(function(lv) {
       var id    = inputId(ns_str, col, lv);
@@ -355,14 +358,12 @@ var PAL = (function() {
     });
   }
 
-  // Highlight active preset button
   function highlightPreset(col, presetName) {
     var safeCol = sid(col);
     document.querySelectorAll('[id^="pal_pbtn_' + safeCol + '_"]')
       .forEach(function(btn) {
         var active = btn.id === 'pal_pbtn_' + safeCol + '_' + sid(presetName);
-        btn.style.border     = active ? '1.5px solid #1a56db'
-                                      : '0.5px solid #d0d0cc';
+        btn.style.border     = active ? '1.5px solid #1a56db' : '0.5px solid #d0d0cc';
         btn.style.background = active ? '#e8f0fe' : 'white';
         var lbl = btn.querySelector('span:last-child');
         if (lbl) lbl.style.color = active ? '#1a56db' : '#666';
@@ -370,43 +371,33 @@ var PAL = (function() {
     currentPreset[col] = presetName;
   }
 
-  // Apply a named preset — updates DOM only, no R re-render
   function applyPreset(shinyId, ns_str, col, presetName, coloursObj) {
     updateInputs(ns_str, col, coloursObj);
     highlightPreset(col, presetName);
-    Shiny.setInputValue(shinyId,
-      {col: col, preset: presetName}, {priority: 'event'});
+    Shiny.setInputValue(shinyId, {col: col, preset: presetName}, {priority: 'event'});
   }
 
-  // Load saved custom colours
   function loadCustom(shinyId, ns_str, col, coloursObj) {
-    if (Object.keys(coloursObj).length > 0) {
-      updateInputs(ns_str, col, coloursObj);
-    }
+    if (Object.keys(coloursObj).length > 0) updateInputs(ns_str, col, coloursObj);
     highlightPreset(col, 'Custom');
     Shiny.setInputValue(shinyId, col, {priority: 'event'});
   }
 
-  // Colour picker changed manually
   function colourChanged(ns_str, col, lv, newValue) {
     var id    = inputId(ns_str, col, lv);
     var hexEl = document.getElementById(id + '_hex');
     if (hexEl) hexEl.textContent = newValue;
     highlightPreset(col, 'Custom');
-    Shiny.setInputValue(ns_str + 'switched_to_custom', col,
-                        {priority: 'event'});
+    Shiny.setInputValue(ns_str + 'switched_to_custom', col, {priority: 'event'});
   }
 
-  // Save — reads current DOM order and colour values, sends to R
   function save(shinyId, ns_str, col, listId) {
     var container = document.getElementById(listId);
     if (!container) return;
-
     var rows        = Array.from(container.children);
     var colours     = {};
     var level_order = [];
     var is_custom   = (currentPreset[col] === 'Custom');
-
     rows.forEach(function(row) {
       var lv = row.getAttribute('data-level');
       if (!lv) return;
@@ -414,23 +405,15 @@ var PAL = (function() {
       var el = document.getElementById(inputId(ns_str, col, lv));
       colours[lv] = el ? el.value : '#4DBBD5';
     });
-
     Shiny.setInputValue(shinyId,
-      {col: col, colours: colours, level_order: level_order,
-       is_custom: is_custom},
+      {col: col, colours: colours, level_order: level_order, is_custom: is_custom},
       {priority: 'event'});
   }
 
-  // ── Drag and drop ───────────────────────────────────────────────────────────
-
   function dragStart(event, listId) {
-    // Walk up to find the draggable row (the div with data-level)
     var target = event.target;
-    while (target && !target.getAttribute('data-level')) {
-      target = target.parentElement;
-    }
+    while (target && !target.getAttribute('data-level')) target = target.parentElement;
     if (!target) return;
-
     dragSrc = target;
     dragSrc.style.opacity = '0.4';
     event.dataTransfer.effectAllowed = 'move';
@@ -440,24 +423,15 @@ var PAL = (function() {
   function dragOver(event) {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
-
-    // Find the row being hovered over
     var target = event.target;
-    while (target && !target.getAttribute('data-level')) {
-      target = target.parentElement;
-    }
+    while (target && !target.getAttribute('data-level')) target = target.parentElement;
     if (!target || target === dragSrc) return;
-
-    // Insert dragSrc before or after target based on cursor position
-    var rect    = target.getBoundingClientRect();
-    var midY    = rect.top + rect.height / 2;
-    var parent  = target.parentNode;
-
-    if (event.clientY < midY) {
+    var rect   = target.getBoundingClientRect();
+    var parent = target.parentNode;
+    if (event.clientY < rect.top + rect.height / 2)
       parent.insertBefore(dragSrc, target);
-    } else {
+    else
       parent.insertBefore(dragSrc, target.nextSibling);
-    }
   }
 
   function drop(event, listId) {
@@ -466,15 +440,7 @@ var PAL = (function() {
   }
 
   function dragEnd(event) {
-    if (dragSrc) {
-      dragSrc.style.opacity = '1';
-      dragSrc = null;
-    }
-    // Remove any hover highlights
-    document.querySelectorAll('[data-level]').forEach(function(row) {
-      row.style.borderTop    = '';
-      row.style.borderBottom = '';
-    });
+    if (dragSrc) { dragSrc.style.opacity = '1'; dragSrc = null; }
   }
 
   return {
@@ -509,9 +475,7 @@ $(document).ready(function() {
 
   var computeBtn = document.getElementById('compute');
   if (computeBtn) {
-    computeBtn.addEventListener('click', function() {
-      setComputing(true);
-    });
+    computeBtn.addEventListener('click', function() { setComputing(true); });
   }
 
   if (hSplit) {
@@ -532,8 +496,7 @@ $(document).ready(function() {
 
   document.addEventListener('mousemove', function(e) {
     if (resizeDragging && sidebar) {
-      var newW = Math.min(400, Math.max(160, e.clientX));
-      sidebar.style.width = newW + 'px';
+      sidebar.style.width = Math.min(400, Math.max(160, e.clientX)) + 'px';
       applyLayout();
       resizePlotly();
     }
@@ -541,16 +504,14 @@ $(document).ready(function() {
       var analysis = document.getElementById('main_analysis');
       if (!analysis) return;
       splitterState.plotPct = Math.min(0.85, Math.max(0.15,
-        (e.clientY - analysis.getBoundingClientRect().top) /
-        analysis.clientHeight));
+        (e.clientY - analysis.getBoundingClientRect().top) / analysis.clientHeight));
       applyLayout();
       resizePlotly();
     } else if (splitterState.dragging === 'v') {
       var bottomRow = document.getElementById('bottom_row');
       if (!bottomRow) return;
       splitterState.leftPct = Math.min(0.85, Math.max(0.15,
-        (e.clientX - bottomRow.getBoundingClientRect().left) /
-        bottomRow.clientWidth));
+        (e.clientX - bottomRow.getBoundingClientRect().left) / bottomRow.clientWidth));
       applyLayout();
       resizePlotly();
     }
@@ -567,48 +528,18 @@ $(document).ready(function() {
       if (vSplit) vSplit.classList.remove('dragging');
       splitterState.dragging = null;
       resizePlotly();
+      resizeSpectrogram();
     }
   });
 
   applyLayout();
   window.addEventListener('resize', applyLayout);
 
-  // ── Wavesurfer ──────────────────────────────────────────────────────────────
-  var wavesurfer = WaveSurfer.create({
-    container:     '#waveform',
-    waveColor:     '#a78bfa',
-    progressColor: '#7c3aed',
-    cursorColor:   '#333',
-    height:        80,
-    sampleRate:    44100,
-    plugins: [
-      WaveSurfer.Spectrogram.create({
-        container:    '#spectrogram',
-        fftSamples:   512,
-        labels:       true,
-        frequencyMax: 22050
-      })
-    ]
-  });
-
-  var isPlaying = false;
-
-  $('#play_pause').click(function() {
-    isPlaying ? wavesurfer.pause() : wavesurfer.play();
-    isPlaying = !isPlaying;
-  });
-
-  Shiny.addCustomMessageHandler('update_audio', function(msg) {
-    wavesurfer.load(msg.src);
-    wavesurfer.on('ready', function() {
-      wavesurfer.play();
-      isPlaying = true;
-    });
-  });
-
+  // ── Non-wavesurfer message handlers (registered immediately) ─────────────────
   Shiny.addCustomMessageHandler('update_now_playing', function(msg) {
-    $('#now_playing_text').html(msg.info);
-    $('#buttons_container').removeClass('hidden');
+    document.getElementById('now_playing_text').innerHTML = msg.info;
+    var controls = document.getElementById('now_playing_controls');
+    if (controls) controls.style.display = 'flex';
   });
 
   Shiny.addCustomMessageHandler('set_analysis_enabled', function(msg) {
@@ -617,5 +548,111 @@ $(document).ready(function() {
     if (msg.enabled) tab.classList.remove('disabled-tab');
     else             tab.classList.add('disabled-tab');
   });
+
+  // ── WaveSurfer — delayed so container has real dimensions ────────────────────
+  setTimeout(function() {
+
+    var wavesurfer = WaveSurfer.create({
+      container:     '#waveform',
+      waveColor:     '#a78bfa',
+      progressColor: '#7c3aed',
+      cursorColor:   '#333',
+      height:        80,
+      normalize:     true,
+      sampleRate:    44100,
+      plugins: [
+        WaveSurfer.Spectrogram.create({
+          container:    '#spectrogram',
+          fftSamples:   512,
+          labels:       true,
+          frequencyMax: 22050,
+          height:       200
+        })
+      ]
+    });
+
+    var isPlaying = false;
+
+    // Update play/pause icon to match state
+    function updatePlayIcon() {
+      var btn = document.getElementById('play_pause_btn');
+      if (!btn) return;
+      btn.innerHTML = isPlaying
+        ? '<svg viewBox="0 0 12 12" fill="currentColor" width="16" height="16">' +
+            '<rect x="2" y="1" width="3" height="10"/>' +
+            '<rect x="7" y="1" width="3" height="10"/>' +
+          '</svg>'
+        : '<svg viewBox="0 0 12 12" fill="currentColor" width="16" height="16">' +
+            '<polygon points="2,1 10,6 2,11"/>' +
+          '</svg>';
+    }
+
+    // Play / Pause
+    var playPauseBtn = document.getElementById('play_pause_btn');
+    if (playPauseBtn) {
+      playPauseBtn.addEventListener('click', function() {
+        if (isPlaying) {
+          wavesurfer.pause();
+          isPlaying = false;
+        } else {
+          wavesurfer.play();
+          isPlaying = true;
+        }
+        updatePlayIcon();
+      });
+    }
+
+    // Open file location
+    var openFileBtn = document.getElementById('open_file_btn');
+    if (openFileBtn) {
+      openFileBtn.addEventListener('click', function() {
+        Shiny.setInputValue('open_file', Math.random(), {priority: 'event'});
+      });
+    }
+
+    // ── Web Audio gain node for 0-2x volume control ────────────────────────
+    var gainNode = null;
+
+    function setupGain() {
+      if (gainNode) return;
+      try {
+        // WaveSurfer v7 exposes .media, older versions use getMediaElement()
+        var media = wavesurfer.media
+          || (wavesurfer.getMediaElement ? wavesurfer.getMediaElement() : null);
+        if (!media) { console.warn('No media element found'); return; }
+
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var source   = audioCtx.createMediaElementSource(media);
+        gainNode     = audioCtx.createGain();
+        gainNode.gain.value = 1.0;
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        console.log('Gain node ready');
+      } catch(e) {
+        console.warn('Web Audio gain setup failed:', e);
+      }
+    }
+
+    var volumeSlider = document.getElementById('volume_slider');
+    if (volumeSlider) {
+      volumeSlider.addEventListener('input', function() {
+        var val = parseFloat(this.value);
+        if (!gainNode) setupGain();
+        if (gainNode) gainNode.gain.value = val;
+      });
+    }
+
+    // Load and play audio
+    Shiny.addCustomMessageHandler('update_audio', function(msg) {
+      wavesurfer.load(msg.src);
+      wavesurfer.once('ready', function() {
+        wavesurfer.play();
+        isPlaying = true;
+        updatePlayIcon();
+        resizeSpectrogram();
+      });
+    });
+
+  }, 300);
 
 });

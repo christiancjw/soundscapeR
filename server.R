@@ -67,7 +67,6 @@ function(input, output, session) {
       min_date <- as.Date(as.character(min(dates)), format = "%Y%m%d")
       max_date <- as.Date(as.character(max(dates)), format = "%Y%m%d")
       cache_date_range(c(min_date, max_date))
-      
       updateDateInput(session, "date_from",      value = min_date,
                       min = min_date, max = max_date)
       updateDateInput(session, "date_to",        value = max_date,
@@ -130,7 +129,7 @@ function(input, output, session) {
   # ── Analysis lock message ─────────────────────────────────────────────────────
   output$analysis_lock_msg <- renderUI({
     if (cache_applied()) return(NULL)
-    div(style = "padding: 2rem; text-align: center; color: #aaa; font-size: 13px;",
+    div(style = "padding:2rem; text-align:center; color:#aaa; font-size:13px;",
         "Open a project and click Apply in Setup first.")
   })
   outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
@@ -245,7 +244,7 @@ function(input, output, session) {
     paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
   }
   
-  # ── Add time bins — uses diel_bin_mins slider ─────────────────────────────────
+  # ── Add time bins ─────────────────────────────────────────────────────────────
   add_time_bins <- function(df, time_range, bin_mins = 30) {
     time_col <- cache_time_col()
     plot_tr  <- if (!is.null(time_range)) time_range else c(0, 1440)
@@ -264,28 +263,24 @@ function(input, output, session) {
       )
   }
   
+  # ── Now playing builder ───────────────────────────────────────────────────────
   build_now_playing <- function(row, url) {
     meta_cols <- cache_meta_cols()
     
-    # Left column — filename + metadata as "label: value" single lines
     meta_items <- sapply(meta_cols, function(col) {
       if (!col %in% colnames(row)) return(NULL)
       paste0(
         "<div style='white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>",
-        "<span style='color:#bbb;'>", col, ":</span> ",
-        row[[col]][1],
+        "<span style='color:#bbb;'>", col, ":</span> ", row[[col]][1],
         "</div>"
       )
     })
     left_col <- paste0(
-      "<div style='font-weight:500; margin-bottom:3px; white-space:nowrap;
-                 overflow:hidden; text-overflow:ellipsis;'>",
-      basename(url),
-      "</div>",
+      "<div style='font-weight:500; margin-bottom:3px; white-space:nowrap;",
+      " overflow:hidden; text-overflow:ellipsis;'>", basename(url), "</div>",
       paste(Filter(Negate(is.null), meta_items), collapse = "")
     )
     
-    # Right column — PC or index values as "label: value" single lines
     pc_cols    <- grep("^PC", colnames(row), value = TRUE)
     active_pcs <- unique(c(
       if (!is.null(input$pca_x)) input$pca_x,
@@ -296,28 +291,24 @@ function(input, output, session) {
     
     value_items <- if (length(active_pcs) > 0) {
       sapply(active_pcs, function(pc) {
-        paste0(
-          "<div><span style='color:#bbb;'>", pc, ":</span> ",
-          round(row[[pc]][1], 3), "</div>"
-        )
+        paste0("<div><span style='color:#bbb;'>", pc, ":</span> ",
+               round(row[[pc]][1], 3), "</div>")
       })
     } else {
       inds <- input$selected_indices
       if (!is.null(inds) && length(inds) > 0) {
         sapply(inds, function(idx) {
           if (!idx %in% colnames(row)) return(NULL)
-          paste0(
-            "<div><span style='color:#bbb;'>", idx, ":</span> ",
-            round(as.numeric(row[[idx]][1]), 3), "</div>"
-          )
+          paste0("<div><span style='color:#bbb;'>", idx, ":</span> ",
+                 round(as.numeric(row[[idx]][1]), 3), "</div>")
         })
       } else character(0)
     }
     right_col <- paste(Filter(Negate(is.null), value_items), collapse = "")
     
     paste0(
-      "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 12px;
-                 font-size:11px; line-height:1.6;'>",
+      "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 12px;",
+      " font-size:11px; line-height:1.5;'>",
       "<div>", left_col, "</div>",
       "<div>", right_col, "</div>",
       "</div>"
@@ -329,31 +320,22 @@ function(input, output, session) {
                           palette_order = NULL) {
     vals <- unique(as.character(df[[colvar]]))
     
-    # Apply saved level order if available
     if (!is.null(palette_order) && !is.null(palette_order[[colvar]])) {
       raw <- palette_order[[colvar]]
       ord <- if (is.list(raw) && !is.null(raw$level_order))
-        unlist(raw$level_order)
-      else
-        unlist(raw)
-      if (length(ord) > 0) {
+        unlist(raw$level_order) else unlist(raw)
+      if (length(ord) > 0)
         vals <- c(ord[ord %in% vals], setdiff(vals, ord))
-      }
     }
     
-    # Extract custom palette colours
     pal <- NULL
     if (!is.null(custom_palettes) && !is.null(custom_palettes[[colvar]])) {
       pal_raw <- custom_palettes[[colvar]]
-      pal <- if (is.list(pal_raw) && !is.null(pal_raw$colours)) {
-        unlist(pal_raw$colours)
-      } else {
-        unlist(pal_raw)
-      }
+      pal <- if (is.list(pal_raw) && !is.null(pal_raw$colours))
+        unlist(pal_raw$colours) else unlist(pal_raw)
       if (length(pal) == 0) pal <- NULL
     }
     
-    # Use custom palette if valid
     if (!is.null(pal)) {
       npg <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
                "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
@@ -365,7 +347,6 @@ function(input, output, session) {
       return(setNames(assigned, vals))
     }
     
-    # Default NPG
     base_cols <- c("#4DBBD5","#E64B35","#00A087","#3C5488",
                    "#F39B7F","#8491B4","#91D1C2","#DC0000","#7E6148","#B09C85")
     setNames(rep_len(base_cols, length(vals)), vals)
@@ -394,8 +375,7 @@ function(input, output, session) {
     df      <- apply_analysis_meta_filters(df)
     pca     <- prcomp(df %>% select(all_of(inds)), center = TRUE, scale. = TRUE)
     scores  <- as.data.frame(pca$x)
-    scores  <- bind_cols(df,
-                         scores[, !(names(scores) %in% names(df)), drop = FALSE])
+    scores  <- bind_cols(df, scores[, !(names(scores) %in% names(df)), drop = FALSE])
     list(scores = scores, pca = pca)
   })
   
@@ -618,8 +598,7 @@ function(input, output, session) {
         scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         avg <- scores %>%
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
-          summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
-                    .groups = "drop")
+          summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE), .groups = "drop")
         avg$hover <- make_text_diel_2d(avg, pcy, colvar)
         p <- plot_ly(avg,
                      x = ~Time_label, y = ~mean_val,
@@ -707,7 +686,7 @@ function(input, output, session) {
     if (nrow(data) > 5000) {
       set.seed(42)
       data <- data[sample(nrow(data), 5000), ]
-      showNotification("Correlation plot based on random sample of 5,000 rows.",
+      showNotification("Correlation plot: random sample of 5,000 rows.",
                        type = "message", duration = 4)
     }
     
@@ -725,9 +704,9 @@ function(input, output, session) {
     p <- GGally::ggpairs(
       plot_data_corr,
       upper = list(continuous = GGally::wrap("cor",
-                                             method    = "pearson",
-                                             size      = 5,
-                                             color     = "#111")),
+                                             method = "pearson",
+                                             size   = 5,
+                                             color  = "#111")),
       lower = list(continuous = GGally::wrap("points",
                                              alpha = 0.2,
                                              size  = 0.6,
@@ -750,8 +729,7 @@ function(input, output, session) {
     session$sendCustomMessage("compute_done", list(is_corr = TRUE))
     p
   }, bg = "transparent")
-  
-
+  outputOptions(output, "corr_plot", suspendWhenHidden = FALSE)
   
   # ── PCA axis reset ────────────────────────────────────────────────────────────
   observeEvent(input$plot_type, {
@@ -785,8 +763,6 @@ function(input, output, session) {
     }
   })
   outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
-  
-  
   
   # ── Summary statistics ────────────────────────────────────────────────────────
   output$summary_stats <- renderUI({
@@ -824,9 +800,8 @@ function(input, output, session) {
       n_anal <- length(unique(df_analysed[[col]]))
       n_tot  <- length(choices[[col]])
       tags$tr(
-        tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
-                col),
-        tags$td(style = "font-size:10px; padding: 2px 0;",
+        tags$td(style = "color:#aaa; font-size:10px; padding:2px 6px 2px 0;", col),
+        tags$td(style = "font-size:10px; padding:2px 0;",
                 paste0(n_plot, " / ", n_anal, " / ", n_tot))
       )
     })
@@ -837,64 +812,56 @@ function(input, output, session) {
         if (!idx %in% colnames(df_plotted)) return(NULL)
         vals <- as.numeric(df_plotted[[idx]])
         tags$tr(
-          tags$td(style = "color:#aaa; font-size:10px; padding: 2px 6px 2px 0;",
-                  idx),
-          tags$td(style = "font-size:10px; padding: 2px 0;",
+          tags$td(style = "color:#aaa; font-size:10px; padding:2px 6px 2px 0;", idx),
+          tags$td(style = "font-size:10px; padding:2px 0;",
                   paste0(round(mean(vals, na.rm = TRUE), 3),
-                         " +/- ", round(sd(vals, na.rm = TRUE), 3)))
+                         " ± ", round(sd(vals, na.rm = TRUE), 3)))
         )
       })
     } else NULL
     
     tagList(
-      div(style = "display: flex; gap: 6px; margin-bottom: 8px;",
-          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
-                     padding: 5px 6px; text-align: center;",
-              div(style = "font-size: 15px; font-weight: 500; color: #4DBBD5;",
+      div(style = "display:flex; gap:6px; margin-bottom:8px;",
+          div(style = "flex:1; background:#f0f0ec; border-radius:6px;
+                     padding:5px 6px; text-align:center;",
+              div(style = "font-size:15px; font-weight:500; color:#4DBBD5;",
                   format(n_plotted, big.mark = ",")),
-              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
-                  "plotted")
+              div(style = "font-size:8px; color:#aaa; margin-top:1px;", "plotted")
           ),
-          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
-                     padding: 5px 6px; text-align: center;",
-              div(style = "font-size: 15px; font-weight: 500; color: #333;",
+          div(style = "flex:1; background:#f0f0ec; border-radius:6px;
+                     padding:5px 6px; text-align:center;",
+              div(style = "font-size:15px; font-weight:500; color:#333;",
                   format(n_analysed, big.mark = ",")),
-              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
-                  "analysed")
+              div(style = "font-size:8px; color:#aaa; margin-top:1px;", "analysed")
           ),
-          div(style = "flex: 1; background: #f0f0ec; border-radius: 6px;
-                     padding: 5px 6px; text-align: center;",
-              div(style = "font-size: 15px; font-weight: 500; color: #999;",
+          div(style = "flex:1; background:#f0f0ec; border-radius:6px;
+                     padding:5px 6px; text-align:center;",
+              div(style = "font-size:15px; font-weight:500; color:#999;",
                   format(n_total, big.mark = ",")),
-              div(style = "font-size: 8px; color: #aaa; margin-top: 1px;",
-                  "total")
+              div(style = "font-size:8px; color:#aaa; margin-top:1px;", "total")
           )
       ),
-      
-      div(style = "background: #f0f0ec; border-radius: 6px;
-                   padding: 6px 8px; margin-bottom: 8px;",
-          div(style = "display: flex; justify-content: space-between;
-                     margin-bottom: 2px;",
-              span(style = "font-size: 9px; color: #4DBBD5;", "Plotted"),
-              span(style = "font-size: 9px; color: #333;", fmt_date(df_plotted))
+      div(style = "background:#f0f0ec; border-radius:6px;
+                   padding:6px 8px; margin-bottom:8px;",
+          div(style = "display:flex; justify-content:space-between; margin-bottom:2px;",
+              span(style = "font-size:9px; color:#4DBBD5;", "Plotted"),
+              span(style = "font-size:9px; color:#333;", fmt_date(df_plotted))
           ),
-          div(style = "display: flex; justify-content: space-between;",
-              span(style = "font-size: 9px; color: #aaa;", "Analysed"),
-              span(style = "font-size: 9px; color: #555;", fmt_date(df_analysed))
+          div(style = "display:flex; justify-content:space-between;",
+              span(style = "font-size:9px; color:#aaa;", "Analysed"),
+              span(style = "font-size:9px; color:#555;", fmt_date(df_analysed))
           )
       ),
-      
       if (length(meta_rows) > 0) tagList(
-        div(style = "font-size: 10px; color: #aaa; margin-bottom: 4px;",
+        div(style = "font-size:10px; color:#aaa; margin-bottom:4px;",
             "Metadata (plotted / analysed / total)"),
-        tags$table(style = "width: 100%; border-collapse: collapse;",
+        tags$table(style = "width:100%; border-collapse:collapse;",
                    do.call(tagList, meta_rows))
       ),
-      
       if (!is.null(index_rows)) tagList(
-        div(style = "font-size: 10px; color: #aaa; margin-top: 8px;
-                     margin-bottom: 4px;", "Index mean +/- SD (plotted)"),
-        tags$table(style = "width: 100%; border-collapse: collapse;",
+        div(style = "font-size:10px; color:#aaa; margin-top:8px; margin-bottom:4px;",
+            "Index mean ± SD (plotted)"),
+        tags$table(style = "width:100%; border-collapse:collapse;",
                    do.call(tagList, Filter(Negate(is.null), index_rows)))
       )
     )
@@ -929,8 +896,7 @@ function(input, output, session) {
     click <- event_data("plotly_click", source = "main")
     if (is.null(click)) return()
     
-    click_sig <- paste(click$key, click$x, click$y, click$curveNumber,
-                       sep = "|")
+    click_sig <- paste(click$key, click$x, click$y, click$curveNumber, sep = "|")
     if (!is.null(last_click_key()) && last_click_key() == click_sig) return()
     last_click_key(click_sig)
     
@@ -961,8 +927,7 @@ function(input, output, session) {
       colvar <- input$color_by
       
       if (n_inds == 1) {
-        group_data   <- plot_data() %>%
-          filter(.data[[colvar]] == click$x)
+        group_data   <- plot_data() %>% filter(.data[[colvar]] == click$x)
         index_name   <- inds[1]
         data_clicked <- group_data[
           which.min(abs(group_data[[index_name]] - as.numeric(click$y))), ]
@@ -982,8 +947,7 @@ function(input, output, session) {
         if (input$plot_type == "Diel Line 2D") {
           avg_at_time <- candidates %>%
             group_by(!!sym(colvar)) %>%
-            summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE),
-                      .groups = "drop")
+            summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE), .groups = "drop")
           clicked_group <- avg_at_time[[colvar]][
             which.min(abs(avg_at_time$mean_val - as.numeric(click$y)))]
         } else {
@@ -997,8 +961,7 @@ function(input, output, session) {
           clicked_group <- avg_at_time[[colvar]][which.min(dists)]
         }
         
-        group_candidates <- candidates %>%
-          filter(.data[[colvar]] == clicked_group)
+        group_candidates <- candidates %>% filter(.data[[colvar]] == clicked_group)
         
         if (nrow(group_candidates) > 0) {
           group_candidates <- if (input$plot_type == "Diel Line 2D") {

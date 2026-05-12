@@ -257,30 +257,78 @@ fluidPage(
 
       .bl-panel.active { display: block; }
 
+      /* ── Now playing box ──────────────────────────────────────────────────── */
       .now-playing {
         background: #f7f7f5;
         border: 0.5px solid #e0e0dc;
         border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 12px;
+        font-size: 11px;
         color: #444;
         position: relative;
-        line-height: 1.6;
-        overflow-y: auto;
         flex-shrink: 0;
-        max-height: 100px;
+        height: 90px;
         margin-bottom: 6px;
+        display: flex;
+        overflow: visible;
       }
 
-      .pca-summary-box {
+      /* text area: scrollable */
+      #now_playing_text {
         flex: 1;
-        min-height: 0;
+        min-width: 0;
+        padding: 8px 10px;
         overflow-y: auto;
-        background: #f7f7f5;
-        border: 0.5px solid #e0e0dc;
-        border-radius: 8px;
-        padding: 8px;
-        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      /* right-side controls — two columns: buttons | slider */
+      #now_playing_controls {
+        display: none;
+        flex-direction: row;
+        align-items: stretch;
+        flex-shrink: 0;
+        border-left: 0.5px solid #e0e0dc;
+        background: #f0f0ec;
+        border-radius: 0 8px 8px 0;
+        height: 90px;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      /* left sub-column: play/pause on top, open-file on bottom */
+      #now_playing_btn_col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 4px;
+        flex-shrink: 0;
+      }
+
+      /* right sub-column: volume slider centred vertically */
+      #now_playing_vol_col {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 4px;
+        border-left: 0.5px solid #e0e0dc;
+        flex-shrink: 0;
+      }
+
+      .vol-btn {
+        background: none;
+        border: none;
+        padding: 2px;
+        cursor: pointer;
+        color: #888;
+        font-size: 12px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        flex-shrink: 0;
       }
 
       #waveform {
@@ -547,7 +595,7 @@ fluidPage(
         padding: 3px 7px !important;
       }
 
-      /* ── Shiny time range slider ─────────────────────────────────────────── */
+      /* ── Shiny slider ──────────────────────────────────────────────────────── */
       .irs--shiny .irs-bar {
         background: #1a56db !important;
         border-top: none !important;
@@ -582,26 +630,15 @@ fluidPage(
 
       .irs--shiny .irs-from,
       .irs--shiny .irs-to,
-      .irs--shiny .irs-single {
-        display: none !important;
-      }
-
+      .irs--shiny .irs-single,
       .irs--shiny .irs-min,
-      .irs--shiny .irs-max {
-        display: none !important;
-      }
-
+      .irs--shiny .irs-max,
       .irs--shiny .irs-grid {
         display: none !important;
       }
 
-      .irs {
-        height: 36px !important;
-      }
-
-      .sidebar .irs-with-grid {
-        margin-bottom: 0 !important;
-      }
+      .irs { height: 36px !important; }
+      .sidebar .irs-with-grid { margin-bottom: 0 !important; }
 
       .hidden { display: none; }
     "))
@@ -623,25 +660,22 @@ fluidPage(
                   projectUI("project")
               ),
               
-              div(id = "panel_analysis", style = "display: none;",
+              div(id = "panel_analysis", style = "display:none;",
                   
-                  # ── 1. Acoustic indices ───────────────────────────────────────────
+                  # ── Acoustic indices ──────────────────────────────────────────────
                   div(class = "filter-header",
-                      span(class = "s-label", style = "margin: 0;", "Acoustic indices"),
+                      span(class = "s-label", style = "margin:0;", "Acoustic indices"),
                       div(class = "filter-header-links",
-                          tags$button(class = "filter-link",
-                                      onclick = "selectAllIndices()", "all"),
-                          tags$button(class = "filter-link none",
-                                      onclick = "deselectAllIndices()", "none")
+                          tags$button(class = "filter-link", onclick = "selectAllIndices()", "all"),
+                          tags$button(class = "filter-link none", onclick = "deselectAllIndices()", "none")
                       )
                   ),
                   div(class = "index-selector-box",
                       checkboxGroupInput("selected_indices", label = NULL,
-                                         choices = NULL, selected = NULL,
-                                         width = "100%")
+                                         choices = NULL, selected = NULL, width = "100%")
                   ),
                   
-                  # ── 2. Plot type ──────────────────────────────────────────────────
+                  # ── Plot type ─────────────────────────────────────────────────────
                   span(class = "s-label", "Plot type"),
                   selectInput("plot_type", label = NULL,
                               choices = c("Scatter 3D", "Scatter 2D",
@@ -649,7 +683,7 @@ fluidPage(
                                           "Boxplot", "Index Correlation"),
                               selected = "Scatter 3D", width = "100%"),
                   
-                  # ── 3. PCA axes ───────────────────────────────────────────────────
+                  # ── PCA axes ──────────────────────────────────────────────────────
                   conditionalPanel(
                     condition = "input.plot_type == 'Scatter 3D'",
                     span(class = "s-label", "PCA axes"),
@@ -672,18 +706,15 @@ fluidPage(
                                     selected = "PC2", width = "100%")
                     )
                   ),
-                  # Diel 2D and Boxplot — Y only
                   conditionalPanel(
                     condition = "input.plot_type == 'Diel Line 2D' ||
-               input.plot_type == 'Boxplot'",
+                         input.plot_type == 'Boxplot'",
                     span(class = "s-label", "PC axis"),
                     div(class = "pca-axes-row",
                         selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
                                     selected = "PC1", width = "100%")
                     )
                   ),
-                  
-                  # Diel 3D — Y and Z, equal width
                   conditionalPanel(
                     condition = "input.plot_type == 'Diel Line 3D'",
                     span(class = "s-label", "PC axes"),
@@ -695,25 +726,25 @@ fluidPage(
                     )
                   ),
                   
+                  # ── Diel bin ──────────────────────────────────────────────────────
                   conditionalPanel(
                     condition = "input.plot_type == 'Diel Line 2D' ||
-                                 input.plot_type == 'Diel Line 3D'",
+                         input.plot_type == 'Diel Line 3D'",
                     span(class = "s-label", "Time bin size"),
                     sliderInput("diel_bin_mins", label = NULL,
-                                min = 5, max = 240, value = 30,
+                                min = 5, max = 360, value = 30,
                                 step = 5, ticks = FALSE, width = "100%"),
                     uiOutput("diel_bin_label")
                   ),
                   
-                  # ── 4. Colour by ──────────────────────────────────────────────────
+                  # ── Colour by ─────────────────────────────────────────────────────
                   span(class = "s-label", "Colour by"),
-                  selectInput("color_by", label = NULL,
-                              choices = NULL, width = "100%"),
+                  selectInput("color_by", label = NULL, choices = NULL, width = "100%"),
                   
-                  # ── 5. Compute ────────────────────────────────────────────────────
+                  # ── Compute ───────────────────────────────────────────────────────
                   actionButton("compute", "Compute", class = "btn-compute"),
                   
-                  # ── 6. Dataframe selection ────────────────────────────────────────
+                  # ── Dataframe selection ───────────────────────────────────────────
                   span(class = "section-divider", "Dataframe selection"),
                   
                   span(class = "s-label", "Date range"),
@@ -733,7 +764,7 @@ fluidPage(
                   span(class = "s-label", "Metadata filters"),
                   div(id = "analysis_filters_container"),
                   
-                  # ── 7. Plotting selection ─────────────────────────────────────────
+                  # ── Plotting selection ────────────────────────────────────────────
                   span(class = "section-divider", "Plotting selection"),
                   
                   span(class = "s-label", "Date range"),
@@ -764,7 +795,7 @@ fluidPage(
               setupUI("setup")
           ),
           
-          div(id = "main_analysis", style = "display: none;",
+          div(id = "main_analysis", style = "display:none;",
               
               uiOutput("analysis_lock_msg"),
               
@@ -780,13 +811,12 @@ fluidPage(
                           div(style = "text-align:center;",
                               div(style = "font-size:13px; color:#555; margin-bottom:6px;",
                                   "Computing correlation matrix..."),
-                              div(id = "corr_progress_text",
-                                  style = "font-size:11px; color:#aaa;",
+                              div(style = "font-size:11px; color:#aaa;",
                                   "This may take a moment for large datasets.")
                           )
                       ),
                       div(id = "corr_plot_wrap",
-                          style = "display: none; width: 100%; height: 100%;",
+                          style = "display:none; width:100%; height:100%;",
                           plotOutput("corr_plot", height = "100%")
                       )
                   )
@@ -798,21 +828,43 @@ fluidPage(
                   
                   div(id = "bottom_left",
                       
+                      # ── Now playing box ─────────────────────────────────────────────
                       div(class = "now-playing",
-                          span(id = "now_playing_text",
-                               style = "font-size: 11px;", "Now playing: -"),
-                          div(id = "buttons_container", class = "hidden",
-                              style = "position: absolute; top: 8px; right: 8px;
-                           display: flex; gap: 4px;",
-                              actionButton("play_pause", label = NULL,
-                                           icon = icon("play"),
-                                           class = "btn-primary btn-sm"),
-                              actionButton("open_file", label = NULL,
-                                           icon = icon("folder-open"),
-                                           class = "btn-secondary btn-sm")
+                          
+                          # Left: text content
+                          div(id = "now_playing_text",
+                              style = "font-size:11px;",
+                              "Now playing: —"),
+                          
+                          # Right: controls — button column + volume column
+                          div(id = "now_playing_controls",
+                              
+                              # Left col: play/pause top, open-file bottom
+                              div(id = "now_playing_btn_col",
+                                  tags$button(
+                                    id = "play_pause_btn", class = "vol-btn",
+                                    HTML('<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 10,6 2,11"/></svg>')
+                                  ),
+                                  tags$button(
+                                    id = "open_file_btn", class = "vol-btn",
+                                    HTML('<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="10" height="8" rx="1"/><path d="M1 5h10M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/></svg>')
+                                  )
+                              ),
+                              
+                              # Right col: vertical volume slider
+                              div(id = "now_playing_vol_col",
+                                  tags$input(
+                                    type = "range", id = "volume_slider",
+                                    min = "0", max = "2", value = "1", step = "0.02",
+                                    style = "writing-mode:vertical-lr;direction:rtl;
+                             height:70px;width:18px;
+                             accent-color:#7c3aed;cursor:pointer;"
+                                  )
+                              )
                           )
                       ),
                       
+                      # ── Bottom-left tabs ────────────────────────────────────────────
                       div(class = "bl-tabs",
                           div(class = "bl-tab active", "PCA Summary",
                               onclick = "switchBLTab('pca')"),
@@ -821,14 +873,14 @@ fluidPage(
                       ),
                       
                       div(id = "bl_pca", class = "bl-panel active",
-                          div(style = "display: flex; justify-content: space-between;
-                           align-items: center; margin-bottom: 6px;",
-                              span(style = "font-size: 10px; color: #aaa;
-                              letter-spacing: 0.04em;", "PCA summary"),
+                          div(style = "display:flex; justify-content:space-between;
+                           align-items:center; margin-bottom:6px;",
+                              span(style = "font-size:10px; color:#aaa; letter-spacing:0.04em;",
+                                   "PCA summary"),
                               downloadButton("download_pca", "Export",
                                              class = "btn-sm",
-                                             style = "font-size: 9px; padding: 2px 8px;
-                                        height: auto; line-height: 1.4;")
+                                             style = "font-size:9px; padding:2px 8px;
+                                        height:auto; line-height:1.4;")
                           ),
                           verbatimTextOutput("pca_summary")
                       ),
@@ -836,8 +888,6 @@ fluidPage(
                       div(id = "bl_stats", class = "bl-panel",
                           uiOutput("summary_stats")
                       )
-                  
-                    
                   ),
                   
                   div(id = "v_splitter"),
