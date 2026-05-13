@@ -40,6 +40,8 @@ function(input, output, session) {
         yaxis         = ax,
         scene         = list(
           bgcolor     = "#111113",
+          domain      = list(x = c(0, 1), y = c(0, 1)),
+          aspectmode  = "cube",
           xaxis       = scene_ax,
           yaxis       = scene_ax,
           zaxis       = scene_ax
@@ -74,6 +76,8 @@ function(input, output, session) {
         xaxis         = ax,
         yaxis         = ax,
         scene         = list(
+          domain      = list(x = c(0, 1), y = c(0, 1)),
+          aspectmode  = "cube",
           xaxis       = scene_ax,
           yaxis       = scene_ax,
           zaxis       = scene_ax
@@ -888,7 +892,8 @@ function(input, output, session) {
         xaxis         = theme$xaxis,
         yaxis         = theme$yaxis,
         scene         = theme$scene,
-        legend        = theme$legend
+        legend        = theme$legend,
+        margin        = list(l = 50, r = 20, t = 20, b = 50, pad = 0)
       ) %>%
       event_register("plotly_click")
   })
@@ -939,6 +944,13 @@ function(input, output, session) {
         }
         la
       })
+    }
+    
+    # Apply zero margin for 3D plots only — 2D plots keep standard margins
+    is_3d <- !is.null(input$plot_type) &&
+      input$plot_type %in% c("Scatter 3D", "Diel Line 3D")
+    if (is_3d) {
+      p <- p %>% layout(margin = list(l = 0, r = 0, t = 0, b = 0, pad = 0))
     }
     
     p$x$source <- "main"
