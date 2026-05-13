@@ -309,7 +309,7 @@ fluidPage(
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #22c55e;
+        background: #d1d5db;
         flex-shrink: 0;
       }
 
@@ -685,7 +685,7 @@ fluidPage(
               
               div(id = "audio_linked_row",
                   div(id = "audio_linked_dot"),
-                  div(id = "audio_linked_label", "audio linked")
+                  div(id = "audio_linked_label", "no project open")
               ),
               
               div(id = "panel_setup",
@@ -711,48 +711,8 @@ fluidPage(
                   span(class = "s-label", "Plot type"),
                   uiOutput("plot_type_ui"),
                   
-                  # ── PCA axes ──────────────────────────────────────────────────────
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Scatter 3D'",
-                    span(class = "s-label", "PCA axes"),
-                    div(class = "pca-axes-row",
-                        selectInput("pca_x", "X", choices = paste0("PC", 1:10),
-                                    selected = "PC1", width = "100%"),
-                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                    selected = "PC2", width = "100%"),
-                        selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
-                                    selected = "PC3", width = "100%")
-                    )
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Scatter 2D'",
-                    span(class = "s-label", "PCA axes"),
-                    div(class = "pca-axes-row",
-                        selectInput("pca_x", "X", choices = paste0("PC", 1:10),
-                                    selected = "PC1", width = "100%"),
-                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                    selected = "PC2", width = "100%")
-                    )
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Diel Line 2D' ||
-                         input.plot_type == 'Boxplot'",
-                    span(class = "s-label", "PC axis"),
-                    div(class = "pca-axes-row",
-                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                    selected = "PC1", width = "100%")
-                    )
-                  ),
-                  conditionalPanel(
-                    condition = "input.plot_type == 'Diel Line 3D'",
-                    span(class = "s-label", "PC axes"),
-                    div(class = "pca-axes-row",
-                        selectInput("pca_y", "Y", choices = paste0("PC", 1:10),
-                                    selected = "PC1", width = "100%"),
-                        selectInput("pca_z", "Z", choices = paste0("PC", 1:10),
-                                    selected = "PC2", width = "100%")
-                    )
-                  ),
+                  # ── PCA axes — uiOutput to avoid duplicate IDs ──────────────────
+                  uiOutput("pca_axes_ui"),
                   
                   # ── Diel bin ──────────────────────────────────────────────────────
                   conditionalPanel(

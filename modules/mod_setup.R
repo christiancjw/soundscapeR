@@ -14,9 +14,11 @@ setupServer <- function(id, active_config) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    raw_df        <- reactiveVal(NULL)
-    missing_files <- reactiveVal(NULL)
-    output_data   <- reactiveVal(NULL)
+    raw_df              <- reactiveVal(NULL)
+    missing_files       <- reactiveVal(NULL)
+    output_data         <- reactiveVal(NULL)
+    config_use_datetime <- reactiveVal(TRUE)   # persisted value from config
+    confirmed_audio_root <- reactiveVal(NULL)  # set when test links passes
     
     # ── Title ─────────────────────────────────────────────────────────────────
     output$setup_title <- renderUI({
@@ -42,10 +44,15 @@ setupServer <- function(id, active_config) {
             # ── Date & time toggle ───────────────────────────────────────────
             div(style = "display:flex; align-items:center; gap:6px;
                          margin-bottom:10px;",
-                tags$input(type = "checkbox", id = ns("use_datetime"),
-                           checked = "checked",
-                           style   = "accent-color:#1a56db; cursor:pointer;
-                                    width:13px; height:13px;"),
+                if (config_use_datetime())
+                  tags$input(type = "checkbox", id = ns("use_datetime"),
+                             checked = "checked",
+                             style   = "accent-color:#1a56db; cursor:pointer;
+                                      width:13px; height:13px;")
+                else
+                  tags$input(type = "checkbox", id = ns("use_datetime"),
+                             style   = "accent-color:#1a56db; cursor:pointer;
+                                      width:13px; height:13px;"),
                 tags$label(`for` = ns("use_datetime"),
                            style = "font-size:11px; color:#555;
                                   cursor:pointer; margin:0; user-select:none;",
@@ -213,16 +220,10 @@ setupServer <- function(id, active_config) {
         updateTextInput(session, "folder_structure",
                         value = cfg$folder_structure)
       
-      # Restore use_datetime from config (default TRUE)
-      use_dt <- if (!is.null(cfg$use_datetime)) cfg$use_datetime else TRUE
-      shinyjs::runjs(sprintf(
-        "document.getElementById('%s').checked = %s;
-         Shiny.setInputValue('%s', %s);",
-        ns("use_datetime"),
-        tolower(as.character(use_dt)),
-        ns("use_datetime"),
-        tolower(as.character(use_dt))
-      ))
+      # Store persisted use_datetime so renderUI can set checkbox correctly
+      config_use_datetime(
+        if (!is.null(cfg$use_datetime)) as.logical(cfg$use_datetime) else TRUE
+      )
     })
     
     # ── Helper: package output ─────────────────────────────────────────────────
@@ -380,6 +381,9 @@ setupServer <- function(id, active_config) {
         type     = if (n_missing == 0) "message" else "warning",
         duration = 5
       )
+      session$sendCustomMessage("set_audio_linked",
+                                list(status = if (n_missing == 0) "linked" else "unlinked"))
+      if (n_missing == 0) confirmed_audio_root(audio_root)
     })
     
     # ── Validation summary ─────────────────────────────────────────────────────
@@ -406,7 +410,13 @@ setupServer <- function(id, active_config) {
     observeEvent(input$save_config, {
       cfg      <- active_config()
       req(cfg)
-      proj_dir <- file.path(PROJECTS_ROOT, cfg$project_name)
+      # Use canonical proj_dir stamped at open time
+      proj_dir <- if (!is.null(cfg$proj_dir) && nchar(cfg$proj_dir) > 0)
+        cfg$proj_dir
+      else if (!is.null(cfg$csv_path) && nchar(cfg$csv_path) > 0)
+        dirname(dirname(cfg$csv_path))
+      else
+        file.path(PROJECTS_ROOT, cfg$project_name)
       write_config(proj_dir, list(
         project_name     = cfg$project_name,
         csv_path         = cfg$csv_path,
@@ -436,9 +446,10 @@ setupServer <- function(id, active_config) {
     })
     
     return(list(
-      app_data          = output_data,
-      reactive_palettes = reactive_palettes,
-      use_datetime      = use_datetime_r
+      app_data             = output_data,
+      reactive_palettes    = reactive_palettes,
+      use_datetime         = use_datetime_r,
+      confirmed_audio_root = confirmed_audio_root
     ))
   })
 }

@@ -8,6 +8,10 @@ library(jsonlite)
 library(data.table)
 library(GGally)
 
+# ── Module sources ────────────────────────────────────────────────────────────
+source("modules/mod_project.R")
+source("modules/mod_setup.R")   # also sources mod_palette.R
+
 # ── Time helpers ──────────────────────────────────────────────────────────────
 minutes_to_hhmmss <- function(mins) {
   h <- mins %/% 60

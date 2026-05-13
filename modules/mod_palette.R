@@ -372,6 +372,9 @@ paletteServer <- function(id, active_config, app_data) {
       level_order <- unname(unlist(input$save_palette$level_order))
       is_custom   <- isTRUE(input$save_palette$is_custom)
       req(col, length(colours) > 0)
+      message("[palette] save col=", col,
+              " colours=", length(colours),
+              " level_order=", paste(level_order, collapse=","))
       
       pals        <- reactive_palettes()
       pals[[col]] <- colours
@@ -404,22 +407,40 @@ paletteServer <- function(id, active_config, app_data) {
     }
     
     save_palettes_to_config <- function(pals, customs, orders, cfg) {
-      req(cfg)
-      proj_dir <- file.path(PROJECTS_ROOT, cfg$project_name)
+      if (is.null(cfg)) { message("[palette] cfg is NULL — skipping write"); return() }
+      # Use canonical proj_dir stamped at open time — never trust project_name alone
+      proj_dir <- if (!is.null(cfg$proj_dir) && nchar(cfg$proj_dir) > 0)
+        cfg$proj_dir
+      else if (!is.null(cfg$csv_path) && nchar(cfg$csv_path) > 0)
+        dirname(dirname(cfg$csv_path))
+      else
+        file.path(PROJECTS_ROOT, cfg$project_name)
+      message("[palette] project_name=", cfg$project_name, " proj_dir=", proj_dir)
+      message("[palette] orders keys: ", paste(names(orders), collapse=","))
+      for (col in names(orders)) {
+        message("[palette] orders[[", col, "]] = ",
+                paste(orders[[col]], collapse=","))
+      }
       all_cols <- unique(c(names(pals), names(customs), names(orders)))
       pal_list <- setNames(lapply(all_cols, function(col) {
+        lo <- as_json_array(orders[[col]])
+        message("[palette] pal_list[[", col, "]]$level_order length=", length(lo))
         list(
           active         = !is.null(pals[[col]]),
           colours        = if (!is.null(pals[[col]]))
             as.list(pals[[col]]) else list(),
           custom_colours = if (!is.null(customs[[col]]))
             as.list(customs[[col]]) else list(),
-          level_order    = as_json_array(orders[[col]])
+          level_order    = lo
         )
       }), all_cols)
       cfg_current          <- read_config(proj_dir)
       cfg_current$palettes <- pal_list
-      write_config(proj_dir, cfg_current)
+      tryCatch(
+        write_config(proj_dir, cfg_current),
+        error = function(e) message("[palette] write_config ERROR: ", e$message)
+      )
+      message("[palette] write complete")
     }
     
     # Build a reactive that returns the full palette config list —

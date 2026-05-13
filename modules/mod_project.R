@@ -10,12 +10,10 @@ projectUI <- function(id) {
   ns <- NS(id)
   tagList(
     div(
-      style = "font-size: 11px; font-weight: 500; color: #888; 
+      style = "font-size: 11px; font-weight: 500; color: #888;
                letter-spacing: 0.04em; margin-bottom: 6px;",
       "SoundscapeR Projects"
     ),
-    
-    # Project selector
     selectInput(
       ns("selected_project"),
       label    = NULL,
@@ -23,8 +21,6 @@ projectUI <- function(id) {
       selected = NULL,
       width    = "100%"
     ),
-    
-    # Open project button
     actionButton(
       ns("open_project"),
       "Open project",
@@ -32,10 +28,7 @@ projectUI <- function(id) {
       class = "btn-sm btn-primary",
       style = "margin-bottom: 6px;"
     ),
-    
     hr(style = "margin: 8px 0;"),
-    
-    # New project creation
     div(
       style = "font-size: 11px; font-weight: 500; color: #888;
                letter-spacing: 0.04em; margin-bottom: 4px;",
@@ -47,12 +40,8 @@ projectUI <- function(id) {
       placeholder = "Enter project name…",
       width       = "100%"
     ),
-    
-    # Create button — only appears when text is entered
     conditionalPanel(
-      condition = paste0(
-        "input['", ns("new_project_name"), "'] != ''"
-      ),
+      condition = paste0("input['", ns("new_project_name"), "'] != ''"),
       actionButton(
         ns("create_project"),
         "Create project",
@@ -61,8 +50,6 @@ projectUI <- function(id) {
         style = "margin-bottom: 6px;"
       )
     ),
-    
-    # Status message
     uiOutput(ns("project_status"))
   )
 }
@@ -71,51 +58,34 @@ projectUI <- function(id) {
 projectServer <- function(id) {
   moduleServer(id, function(input, output, session) {
     
-    # Reactive config — this is what the rest of the app reads
     active_config <- reactiveVal(NULL)
     
-    # ── Helpers ────────────────────────────────────────────────────────────
-    
     refresh_project_list <- function() {
-      updateSelectInput(
-        session,
-        "selected_project",
-        choices = get_project_list()
-      )
+      updateSelectInput(session, "selected_project",
+                        choices = get_project_list())
     }
     
     show_status <- function(msg, type = "info") {
-      colour <- switch(type,
-                       success = "#2a9d5c",
-                       error   = "#c0392b",
-                       "#555"
-      )
+      colour <- switch(type, success = "#2a9d5c", error = "#c0392b", "#555")
       output$project_status <- renderUI({
-        div(msg, style = paste0(
-          "font-size: 11px; color: ", colour, "; margin-top: 4px;"
-        ))
+        div(msg, style = paste0("font-size: 11px; color: ", colour,
+                                "; margin-top: 4px;"))
       })
     }
     
-    # ── Create project ──────────────────────────────────────────────────────
+    # ── Create project ──────────────────────────────────────────────────────────
     observeEvent(input$create_project, {
       req(input$new_project_name)
-      
       name     <- trimws(input$new_project_name)
       proj_dir <- file.path(PROJECTS_ROOT, name)
-      
       if (dir.exists(proj_dir)) {
         show_status("A project with that name already exists.", "error")
         return()
       }
-      
-      # Create folder structure
       dir.create(proj_dir, recursive = TRUE)
       dir.create(file.path(proj_dir, "raw_data"))
       dir.create(file.path(proj_dir, "figures"))
       dir.create(file.path(proj_dir, "outputs"))
-      
-      # Write blank config
       config <- list(
         project_name     = name,
         csv_path         = "",
@@ -125,38 +95,35 @@ projectServer <- function(id) {
         audio_root       = "",
         audio_path_mode  = "folder_structure",
         folder_structure = "{Site}/{Device}/{Date}",
+        use_datetime     = TRUE,
         palettes         = list()
       )
       write_config(proj_dir, config)
-      
-      # Update UI
       refresh_project_list()
       updateSelectInput(session, "selected_project", selected = name)
       updateTextInput(session, "new_project_name", value = "")
-      show_status(paste0("'", name, "' created. Add your CSV to raw_data/ then open."), "success")
+      show_status(paste0("'", name, "' created. Add your CSV to raw_data/ then open."),
+                  "success")
     })
     
-    # ── Open project ────────────────────────────────────────────────────────
+    # ── Open project ────────────────────────────────────────────────────────────
     observeEvent(input$open_project, {
       req(input$selected_project)
-      
       proj_dir    <- file.path(PROJECTS_ROOT, input$selected_project)
       config_path <- file.path(proj_dir, "config.json")
-      
       if (!file.exists(config_path)) {
         show_status("No config found. Is this a valid project folder?", "error")
         return()
       }
-      
       config <- read_config(proj_dir)
       
-      # Find CSV in raw_data/ if not already set
+      # Always stamp from actual folder — prevents stale values misdirecting writes
+      config$project_name <- input$selected_project
+      config$proj_dir     <- proj_dir   # canonical path, used by all write operations
+      
       if (config$csv_path == "") {
-        csvs <- list.files(
-          file.path(proj_dir, "raw_data"),
-          pattern    = "\\.csv$",
-          full.names = TRUE
-        )
+        csvs <- list.files(file.path(proj_dir, "raw_data"),
+                           pattern = "\\.csv$", full.names = TRUE)
         if (length(csvs) == 1) {
           config$csv_path <- csvs[1]
         } else if (length(csvs) > 1) {
@@ -172,13 +139,12 @@ projectServer <- function(id) {
       show_status(paste0("'", config$project_name, "' loaded."), "success")
     })
     
-    # ── Return the reactive config ──────────────────────────────────────────
     return(active_config)
   })
 }
 
 
-# ── Standalone helpers (used by both modules) ───────────────────────────────
+# ── Standalone helpers ────────────────────────────────────────────────────────
 
 get_project_list <- function() {
   if (!dir.exists(PROJECTS_ROOT)) {

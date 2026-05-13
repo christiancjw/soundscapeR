@@ -1,6 +1,3 @@
-source("modules/mod_project.R")
-source("modules/mod_setup.R")
-
 function(input, output, session) {
   
   current_audio  <- reactiveVal(NULL)
@@ -13,12 +10,38 @@ function(input, output, session) {
     session$sendCustomMessage("set_analysis_enabled", list(enabled = FALSE))
   }, once = TRUE)
   
+  # ── Activate audio when test links confirms root is accessible ────────────────
+  observeEvent(confirmed_audio_root(), {
+    root <- confirmed_audio_root()
+    req(!is.null(root) && nchar(root) > 0)
+    addResourcePath("audio", root)
+    cache_audio_root(root)
+    # Re-trigger compute so plot traces get key= re-attached with has_audio=TRUE
+    if (cache_applied()) {
+      shinyjs::click("compute")
+    }
+  })
+  
+  # ── Poll audio root accessibility every 5s ────────────────────────────────────
+  observeEvent(input$audio_link_poll, {
+    root <- cache_audio_root()
+    # Only check if a root was previously confirmed
+    if (is.null(root) || nchar(root) == 0) return()
+    if (dir.exists(root)) {
+      session$sendCustomMessage("set_audio_linked", list(status = "linked"))
+    } else {
+      cache_audio_root("")
+      session$sendCustomMessage("set_audio_linked", list(status = "unlinked"))
+    }
+  }, ignoreInit = TRUE)
+  
   # ── Module wiring ─────────────────────────────────────────────────────────────
   active_config     <- projectServer("project")
-  setup_out         <- setupServer("setup", active_config)
-  app_data          <- setup_out$app_data
-  reactive_palettes <- setup_out$reactive_palettes
-  use_datetime_live <- setup_out$use_datetime
+  setup_out            <- setupServer("setup", active_config)
+  app_data             <- setup_out$app_data
+  reactive_palettes    <- setup_out$reactive_palettes
+  use_datetime_live    <- setup_out$use_datetime
+  confirmed_audio_root <- setup_out$confirmed_audio_root
   
   # ── Flat cache ────────────────────────────────────────────────────────────────
   cache_df             <- reactiveVal(NULL)
@@ -51,11 +74,17 @@ function(input, output, session) {
     if (nchar(ad$audio_root) > 0 && dir.exists(ad$audio_root)) {
       addResourcePath("audio", ad$audio_root)
       cache_audio_root(ad$audio_root)
+      session$sendCustomMessage("set_audio_linked", list(status = "linked"))
     } else if (nchar(ad$audio_root) > 0) {
+      cache_audio_root("")
+      session$sendCustomMessage("set_audio_linked", list(status = "unlinked"))
       showNotification(
         "Audio root not accessible - analysis available, audio playback disabled.",
         type = "warning", duration = 6
       )
+    } else {
+      cache_audio_root("")
+      session$sendCustomMessage("set_audio_linked", list(status = "no_audio"))
     }
     
     cache_df(ad$df)
@@ -164,6 +193,72 @@ function(input, output, session) {
                 choices = choices, selected = sel, width = "100%")
   })
   outputOptions(output, "plot_type_ui", suspendWhenHidden = FALSE)
+  
+  # ── PCA axes UI ───────────────────────────────────────────────────────────────
+  output$pca_axes_ui <- renderUI({
+    pt <- input$plot_type
+    if (is.null(pt)) pt <- "Scatter 3D"
+    
+    pc_choices <- paste0("PC", 1:10)
+    x_sel <- if (!is.null(input$pca_x)) input$pca_x else "PC1"
+    y_sel <- if (!is.null(input$pca_y)) input$pca_y else "PC2"
+    z_sel <- if (!is.null(input$pca_z)) input$pca_z else "PC3"
+    
+    row_style <- "display:flex; gap:4px;"
+    
+    if (pt == "Scatter 3D") {
+      tagList(
+        span(class = "s-label", "PCA axes"),
+        div(style = row_style,
+            div(style = "flex:1;",
+                selectInput("pca_x", "X", choices = pc_choices,
+                            selected = x_sel, width = "100%")),
+            div(style = "flex:1;",
+                selectInput("pca_y", "Y", choices = pc_choices,
+                            selected = y_sel, width = "100%")),
+            div(style = "flex:1;",
+                selectInput("pca_z", "Z", choices = pc_choices,
+                            selected = z_sel, width = "100%"))
+        )
+      )
+    } else if (pt == "Scatter 2D") {
+      tagList(
+        span(class = "s-label", "PCA axes"),
+        div(style = row_style,
+            div(style = "flex:1;",
+                selectInput("pca_x", "X", choices = pc_choices,
+                            selected = x_sel, width = "100%")),
+            div(style = "flex:1;",
+                selectInput("pca_y", "Y", choices = pc_choices,
+                            selected = y_sel, width = "100%"))
+        )
+      )
+    } else if (pt %in% c("Diel Line 2D", "Boxplot")) {
+      tagList(
+        span(class = "s-label", "PC axis"),
+        div(style = row_style,
+            div(style = "flex:1;",
+                selectInput("pca_y", "Y", choices = pc_choices,
+                            selected = y_sel, width = "100%"))
+        )
+      )
+    } else if (pt == "Diel Line 3D") {
+      tagList(
+        span(class = "s-label", "PC axes"),
+        div(style = row_style,
+            div(style = "flex:1;",
+                selectInput("pca_y", "Y", choices = pc_choices,
+                            selected = y_sel, width = "100%")),
+            div(style = "flex:1;",
+                selectInput("pca_z", "Z", choices = pc_choices,
+                            selected = z_sel, width = "100%"))
+        )
+      )
+    } else {
+      NULL  # Index Correlation — no axes needed
+    }
+  })
+  outputOptions(output, "pca_axes_ui", suspendWhenHidden = FALSE)
   
   # ── Diel bin label ────────────────────────────────────────────────────────────
   output$diel_bin_label <- renderUI({
@@ -487,10 +582,12 @@ function(input, output, session) {
   # ── Main plot ─────────────────────────────────────────────────────────────────
   plot_results <- eventReactive(input$compute, {
     req(cache_applied())
+    pt <- input$plot_type
+    req(!is.null(pt) && nchar(pt) > 0)
     inds    <- input$selected_indices
     n_inds  <- length(inds)
     colvar  <- input$color_by
-    is_corr <- input$plot_type == "Index Correlation"
+    is_corr <- pt == "Index Correlation"
     
     session$sendCustomMessage("show_corr", list(show = is_corr))
     
@@ -582,12 +679,12 @@ function(input, output, session) {
         input$pca_z else "PC3"
       
       available_pcs <- grep("^PC", colnames(data), value = TRUE)
-      if (input$plot_type %in% c("Scatter 3D", "Diel Line 3D") &&
+      if (pt %in% c("Scatter 3D", "Diel Line 3D") &&
           !all(c(pcy, pcz) %in% available_pcs)) {
         session$sendCustomMessage("compute_done", list(is_corr = FALSE))
         return(NULL)
       }
-      if (input$plot_type %in% c("Scatter 2D", "Diel Line 2D") &&
+      if (pt %in% c("Scatter 2D", "Diel Line 2D") &&
           !pcy %in% available_pcs) {
         session$sendCustomMessage("compute_done", list(is_corr = FALSE))
         return(NULL)
@@ -597,7 +694,7 @@ function(input, output, session) {
       ylab <- paste0(pcy, " (", var_exp[as.numeric(sub("PC", "", pcy))], "%)")
       zlab <- paste0(pcz, " (", var_exp[as.numeric(sub("PC", "", pcz))], "%)")
       
-      if (input$plot_type == "Scatter 3D") {
+      if (pt == "Scatter 3D") {
         scores$hover <- make_text_pca_3d(scores, pcx, pcy, pcz,
                                          colvar, date_col, "Time_fmt")
         p <- plot_ly(scores,
@@ -612,7 +709,7 @@ function(input, output, session) {
                               yaxis = list(title = ylab),
                               zaxis = list(title = zlab)))
         
-      } else if (input$plot_type == "Scatter 2D") {
+      } else if (pt == "Scatter 2D") {
         scores$hover <- make_text_pca_2d(scores, pcx, pcy,
                                          colvar, date_col, "Time_fmt")
         p <- plot_ly(scores,
@@ -626,7 +723,7 @@ function(input, output, session) {
           layout(xaxis = list(title = xlab),
                  yaxis = list(title = ylab))
         
-      } else if (input$plot_type == "Diel Line 2D") {
+      } else if (pt == "Diel Line 2D") {
         scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         avg <- scores %>%
           group_by(Time_label, Time_bin, !!sym(colvar)) %>%
@@ -643,7 +740,7 @@ function(input, output, session) {
           layout(xaxis = list(title = "Time of day"),
                  yaxis = list(title = ylab))
         
-      } else if (input$plot_type == "Diel Line 3D") {
+      } else if (pt == "Diel Line 3D") {
         scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         avg <- scores %>%
           group_by(Time_bin, Time_label, !!sym(colvar)) %>%
@@ -663,7 +760,7 @@ function(input, output, session) {
                               yaxis = list(title = ylab),
                               zaxis = list(title = zlab)))
         
-      } else if (input$plot_type == "Boxplot") {
+      } else if (pt == "Boxplot") {
         pc_sel <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         ylab   <- paste0(pc_sel, " (",
                          var_exp[as.numeric(sub("PC", "", pc_sel))], "%)")
@@ -694,7 +791,17 @@ function(input, output, session) {
   
   output$main_plot <- renderPlotly({
     p <- plot_results()
-    if (is.null(p)) return(NULL)
+    if (is.null(p)) {
+      # Return empty plot to keep widget alive and source registered
+      return(plot_ly() %>%
+               layout(
+                 xaxis = list(visible = FALSE),
+                 yaxis = list(visible = FALSE),
+                 paper_bgcolor = "rgba(0,0,0,0)",
+                 plot_bgcolor  = "rgba(0,0,0,0)"
+               ) %>%
+               event_register("plotly_click"))
+    }
     p$x$source <- "main"
     p
   })
@@ -1020,7 +1127,7 @@ function(input, output, session) {
     }
   })
   
-  # ── Open file  ─────────────────────────────────────────────────────────────────
+  # ── Open file ─────────────────────────────────────────────────────────────────
   observeEvent(input$open_file, {
     url  <- current_audio()
     if (is.null(url)) return()

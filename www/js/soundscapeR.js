@@ -57,11 +57,9 @@ function resizePlotly() {
   }, 30);
 }
 
-// ── Spectrogram resize ────────────────────────────────────────────────────────
+// ── Spectrogram resize — called after splitter drag ends ─────────────────────
 function resizeSpectrogram() {
-  var el = document.getElementById('spectrogram');
-  if (!el) return;
-  // Just let CSS flex handle the height — canvas stretches via object-fit
+  if (window._spectroRebuild) window._spectroRebuild();
 }
 
 // ── Compute button state ──────────────────────────────────────────────────────
@@ -399,6 +397,7 @@ var PAL = (function() {
       var el = document.getElementById(inputId(ns_str, col, lv));
       colours[lv] = el ? el.value : '#4DBBD5';
     });
+    console.log('[PAL.save] col:', col, 'level_order:', level_order);
     Shiny.setInputValue(shinyId,
       {col: col, colours: colours, level_order: level_order, is_custom: is_custom},
       {priority: 'event'});
@@ -472,6 +471,7 @@ $(document).ready(function() {
     computeBtn.addEventListener('click', function() { setComputing(true); });
   }
 
+
   if (hSplit) {
     hSplit.addEventListener('mousedown', function(e) {
       splitterState.dragging = 'h';
@@ -537,6 +537,30 @@ $(document).ready(function() {
     if (controls) controls.style.display = 'flex';
   });
 
+  // Poll audio link status every 5 seconds
+  setInterval(function() {
+    Shiny.setInputValue('audio_link_poll', Date.now());
+  }, 5000);
+
+  Shiny.addCustomMessageHandler('set_audio_linked', function(msg) {
+    var dot   = document.getElementById('audio_linked_dot');
+    var label = document.getElementById('audio_linked_label');
+    if (!dot || !label) return;
+    if (msg.status === 'linked') {
+      dot.style.background = '#22c55e';
+      label.textContent    = 'audio linked';
+      label.style.color    = '#aaa';
+    } else if (msg.status === 'unlinked') {
+      dot.style.background = '#ef4444';
+      label.textContent    = 'audio not found';
+      label.style.color    = '#ef4444';
+    } else if (msg.status === 'no_audio') {
+      dot.style.background = '#d1d5db';
+      label.textContent    = 'no audio configured';
+      label.style.color    = '#aaa';
+    }
+  });
+
   Shiny.addCustomMessageHandler('set_analysis_enabled', function(msg) {
     var tab = document.getElementById('tab_analysis');
     if (!tab) return;
@@ -544,47 +568,79 @@ $(document).ready(function() {
     else             tab.classList.add('disabled-tab');
   });
 
-  // ── WaveSurfer — delayed so container has real dimensions ────────────────────
+  // ── WaveSurfer ───────────────────────────────────────────────────────────────
   setTimeout(function() {
 
-    // Measure spectrogram container height by briefly making it visible
-    var spectroEl   = document.getElementById('spectrogram');
-    var analysisEl  = document.getElementById('main_analysis');
-    var wasHidden   = analysisEl && analysisEl.style.display === 'none';
-    if (wasHidden) {
-      analysisEl.style.visibility = 'hidden';
-      analysisEl.style.display    = 'flex';
-    }
-    applyLayout();
-    var spectroH = spectroEl ? Math.max(150, spectroEl.clientHeight) : 300;
-    if (wasHidden) {
-      analysisEl.style.display    = 'none';
-      analysisEl.style.visibility = '';
+    var isPlaying   = false;
+    var currentSrc  = null;
+    var gainNode    = null;
+    var wavesurfer  = null;
+
+    function getSpectroH() {
+      var el = document.getElementById('spectrogram');
+      return el ? Math.max(80, el.clientHeight) : 200;
     }
 
-    var wavesurfer = WaveSurfer.create({
-      container:     '#waveform',
-      waveColor:     '#a78bfa',
-      progressColor: '#7c3aed',
-      cursorColor:   '#333',
-      height:        80,
-      normalize:     true,
-      sampleRate:    44100,
-      plugins: [
-        WaveSurfer.Spectrogram.create({
-          container:    '#spectrogram',
-          fftSamples:   512,
-          labels:       true,
-          frequencyMax: 22050,
-          height:       spectroH
-        })
-      ]
-    });
-    window._wavesurfer = wavesurfer;
+    function createWaveSurfer(h) {
+      return WaveSurfer.create({
+        container:     '#waveform',
+        waveColor:     '#a78bfa',
+        progressColor: '#7c3aed',
+        cursorColor:   '#333',
+        height:        80,
+        normalize:     true,
+        sampleRate:    44100,
+        plugins: [
+          WaveSurfer.Spectrogram.create({
+            container:    '#spectrogram',
+            fftSamples:   512,
+            labels:       true,
+            frequencyMax: 22050,
+            height:       h
+          })
+        ]
+      });
+    }
 
-    var isPlaying = false;
+    function destroyWaveSurfer() {
+      if (!wavesurfer) return;
+      try { wavesurfer.destroy(); } catch(e) {}
+      wavesurfer = null;
+      gainNode   = null;
+      var wEl = document.getElementById('waveform');
+      var sEl = document.getElementById('spectrogram');
+      if (wEl) wEl.innerHTML = '';
+      if (sEl) sEl.innerHTML = '';
+    }
 
-    // Update play/pause icon to match state
+    function initWaveSurfer(h) {
+      destroyWaveSurfer();
+      wavesurfer = createWaveSurfer(h);
+      window._wavesurfer = wavesurfer;
+      wavesurfer.on('finish', function() {
+        isPlaying = false;
+        updatePlayIcon();
+      });
+    }
+
+    // Initial create — no audio yet, just needs to exist
+    initWaveSurfer(getSpectroH());
+
+    // Rebuild at current container size — called on splitter drag end
+    window._spectroRebuild = function() {
+      var newH = getSpectroH();
+      isPlaying = false;
+      updatePlayIcon();
+      initWaveSurfer(newH);
+      // Reload audio if there was a file loaded
+      if (currentSrc) {
+        wavesurfer.load(currentSrc);
+        wavesurfer.once('ready', function() {
+          // Don't auto-play after resize
+        });
+      }
+    };
+
     function updatePlayIcon() {
       var btn = document.getElementById('play_pause_btn');
       if (!btn) return;
@@ -602,13 +658,9 @@ $(document).ready(function() {
     var playPauseBtn = document.getElementById('play_pause_btn');
     if (playPauseBtn) {
       playPauseBtn.addEventListener('click', function() {
-        if (isPlaying) {
-          wavesurfer.pause();
-          isPlaying = false;
-        } else {
-          wavesurfer.play();
-          isPlaying = true;
-        }
+        if (!wavesurfer) return;
+        if (isPlaying) { wavesurfer.pause(); isPlaying = false; }
+        else           { wavesurfer.play();  isPlaying = true;  }
         updatePlayIcon();
       });
     }
@@ -621,28 +673,20 @@ $(document).ready(function() {
       });
     }
 
-    // ── Web Audio gain node for 0-2x volume control ────────────────────────
-    var gainNode = null;
-
+    // Volume gain node
     function setupGain() {
       if (gainNode) return;
       try {
-        // WaveSurfer v7 exposes .media, older versions use getMediaElement()
-        var ws    = window._wavesurfer || wavesurfer;
-        var media = ws.media
-          || (ws.getMediaElement ? ws.getMediaElement() : null);
-        if (!media) { console.warn('No media element found'); return; }
-
+        var ws    = wavesurfer;
+        var media = ws.media || (ws.getMediaElement ? ws.getMediaElement() : null);
+        if (!media) return;
         var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         var source   = audioCtx.createMediaElementSource(media);
         gainNode     = audioCtx.createGain();
         gainNode.gain.value = 1.0;
         source.connect(gainNode);
         gainNode.connect(audioCtx.destination);
-        console.log('Gain node ready');
-      } catch(e) {
-        console.warn('Web Audio gain setup failed:', e);
-      }
+      } catch(e) { console.warn('Gain setup failed:', e); }
     }
 
     var volumeSlider = document.getElementById('volume_slider');
@@ -654,14 +698,17 @@ $(document).ready(function() {
       });
     }
 
-    // Load and play audio
+    // Load and play audio — rebuild at current height first
     Shiny.addCustomMessageHandler('update_audio', function(msg) {
-      wavesurfer.load(msg.src);
+      currentSrc = msg.src;
+      // Rebuild at exact current container height before loading
+      var newH = getSpectroH();
+      initWaveSurfer(newH);
+      wavesurfer.load(currentSrc);
       wavesurfer.once('ready', function() {
         wavesurfer.play();
         isPlaying = true;
         updatePlayIcon();
-        resizeSpectrogram();
       });
     });
 
