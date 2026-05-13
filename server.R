@@ -5,6 +5,87 @@ function(input, output, session) {
   corr_plot_obj  <- reactiveVal(NULL)
   bottom_trigger <- reactiveVal(0)
   
+  # Dark mode — updated by JS on toggle, defaults to TRUE
+  is_dark <- reactive({
+    val <- input$dark_mode
+    if (is.null(val)) TRUE else as.logical(val)
+  })
+  
+  plotly_theme <- reactive({
+    dark <- is_dark()
+    if (dark) {
+      ax <- list(
+        gridcolor     = "#525258",
+        linecolor     = "#606068",
+        tickcolor     = "#606068",
+        zerolinecolor = "#606068",
+        tickfont      = list(color = "#c0c0c0", size = 10),
+        titlefont     = list(color = "#f0f0f0", size = 11),
+        title         = list(font = list(color = "#f0f0f0", size = 11))
+      )
+      scene_ax <- list(
+        gridcolor     = "#525258",
+        linecolor     = "#606068",
+        tickcolor     = "#606068",
+        zerolinecolor = "#606068",
+        backgroundcolor = "#111113",
+        tickfont      = list(color = "#c0c0c0", size = 10),
+        titlefont     = list(color = "#f0f0f0", size = 11)
+      )
+      list(
+        paper_bgcolor = "#111113",
+        plot_bgcolor  = "#111113",
+        font          = list(color = "#f0f0f0", size = 11),
+        xaxis         = ax,
+        yaxis         = ax,
+        scene         = list(
+          bgcolor     = "#111113",
+          xaxis       = scene_ax,
+          yaxis       = scene_ax,
+          zaxis       = scene_ax
+        ),
+        legend        = list(bgcolor = "rgba(17,17,19,0.92)", borderwidth = 0,
+                             font = list(size = 10, color = "#f0f0f0"),
+                             x = 1, y = 1, xanchor = "right", yanchor = "top",
+                             traceorder = "normal", itemsizing = "constant")
+      )
+    } else {
+      ax <- list(
+        gridcolor     = "#d8d8d4",
+        linecolor     = "#c8c8c4",
+        tickcolor     = "#c8c8c4",
+        zerolinecolor = "#c8c8c4",
+        tickfont      = list(color = "#555", size = 10),
+        titlefont     = list(color = "#1a1a1a", size = 11),
+        title         = list(font = list(color = "#1a1a1a", size = 11))
+      )
+      scene_ax <- list(
+        gridcolor     = "#d8d8d4",
+        linecolor     = "#c8c8c4",
+        tickcolor     = "#c8c8c4",
+        zerolinecolor = "#c8c8c4",
+        tickfont      = list(color = "#555", size = 10),
+        titlefont     = list(color = "#1a1a1a", size = 11)
+      )
+      list(
+        paper_bgcolor = "rgba(0,0,0,0)",
+        plot_bgcolor  = "rgba(0,0,0,0)",
+        font          = list(color = "#1a1a1a", size = 11),
+        xaxis         = ax,
+        yaxis         = ax,
+        scene         = list(
+          xaxis       = scene_ax,
+          yaxis       = scene_ax,
+          zaxis       = scene_ax
+        ),
+        legend        = list(bgcolor = "rgba(255,255,255,0.9)", borderwidth = 0,
+                             font = list(size = 10, color = "#1a1a1a"),
+                             x = 1, y = 1, xanchor = "right", yanchor = "top",
+                             traceorder = "normal", itemsizing = "constant")
+      )
+    }
+  })
+  
   # ── Disable analysis tab on startup ──────────────────────────────────────────
   session$onFlushed(function() {
     session$sendCustomMessage("set_analysis_enabled", list(enabled = FALSE))
@@ -580,7 +661,7 @@ function(input, output, session) {
   }
   
   # ── Main plot ─────────────────────────────────────────────────────────────────
-  plot_results <- eventReactive(input$compute, {
+  plot_results <- eventReactive(list(input$compute, input$dark_mode), {
     req(cache_applied())
     pt <- input$plot_type
     req(!is.null(pt) && nchar(pt) > 0)
@@ -779,20 +860,23 @@ function(input, output, session) {
     
     session$sendCustomMessage("compute_done", list(is_corr = FALSE))
     
+    theme <- plotly_theme()
     p %>%
-      layout(legend = list(
-        x = 1, y = 1, xanchor = "right", yanchor = "top",
-        bgcolor = "rgba(255,255,255,0.85)", borderwidth = 0,
-        font = list(size = 10), traceorder = "normal",
-        itemsizing = "constant"
-      )) %>%
+      layout(
+        paper_bgcolor = theme$paper_bgcolor,
+        plot_bgcolor  = theme$plot_bgcolor,
+        font          = theme$font,
+        xaxis         = theme$xaxis,
+        yaxis         = theme$yaxis,
+        scene         = theme$scene,
+        legend        = theme$legend
+      ) %>%
       event_register("plotly_click")
   })
   
   output$main_plot <- renderPlotly({
     p <- plot_results()
     if (is.null(p)) {
-      # Return empty plot to keep widget alive and source registered
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -802,6 +886,42 @@ function(input, output, session) {
                ) %>%
                event_register("plotly_click"))
     }
+    
+    # Inject theme fonts into axis titles that were set as plain strings
+    # plotly stores layout in p$x$layoutAttrs — we patch it here
+    theme <- plotly_theme()
+    tf    <- list(color = theme$font$color, size = 11)
+    
+    fix_axis <- function(ax_cfg, theme_ax) {
+      if (is.null(ax_cfg)) return(theme_ax)
+      # Preserve title text, override everything else with theme
+      title_text <- if (is.list(ax_cfg$title)) ax_cfg$title$text
+      else if (is.character(ax_cfg$title)) ax_cfg$title
+      else NULL
+      merged <- theme_ax
+      if (!is.null(title_text))
+        merged$title <- list(text = title_text, font = tf)
+      merged
+    }
+    
+    # Walk layoutAttrs and patch xaxis/yaxis/scene
+    if (!is.null(p$x$layoutAttrs)) {
+      p$x$layoutAttrs <- lapply(p$x$layoutAttrs, function(la) {
+        if (!is.null(la$xaxis))
+          la$xaxis <- fix_axis(la$xaxis, theme$xaxis)
+        if (!is.null(la$yaxis))
+          la$yaxis <- fix_axis(la$yaxis, theme$yaxis)
+        if (!is.null(la$scene)) {
+          sc <- la$scene
+          if (!is.null(sc$xaxis)) sc$xaxis <- fix_axis(sc$xaxis, theme$scene$xaxis)
+          if (!is.null(sc$yaxis)) sc$yaxis <- fix_axis(sc$yaxis, theme$scene$yaxis)
+          if (!is.null(sc$zaxis)) sc$zaxis <- fix_axis(sc$zaxis, theme$scene$zaxis)
+          la$scene <- sc
+        }
+        la
+      })
+    }
+    
     p$x$source <- "main"
     p
   })

@@ -6,6 +6,62 @@ fluidPage(
     tags$script(src = "js/spectrogram.min.js"),
     tags$style(HTML("
 
+      /* ── CSS variables — light theme — purple accents ───────────────────── */
+      :root {
+        --bg-app:        #ffffff;
+        --bg-sidebar:    #f7f7f5;
+        --bg-subtle:     #f0f0ec;
+        --bg-card:       #f7f7f5;
+        --bg-input:      #ffffff;
+        --bg-hover:      #ede9f7;
+        --border:        #e0e0dc;
+        --border-light:  #d0d0cc;
+        --border-focus:  #c4b5f7;
+        --border-accent: #e5dff7;
+        --text-primary:  #1a1a1a;
+        --text-secondary:#444;
+        --text-muted:    #777;
+        --text-faint:    #aaa;
+        --text-input:    #1a1a1a;
+        --accent:        #7c3aed;
+        --accent-hover:  #6d28d9;
+        --accent-light:  #ede9f7;
+        --accent-border: #c4b5f7;
+        --accent-text:   #7c3aed;
+        --purple:        #7c3aed;
+        --purple-wave:   #a78bfa;
+        --shadow:        rgba(0,0,0,0.06);
+        --scrollbar:     #d0d0cc;
+      }
+
+      /* ── Dark theme — orange accents ─────────────────────────────────────── */
+      body.dark {
+        --bg-app:        #111113;
+        --bg-sidebar:    #18181b;
+        --bg-subtle:     #1c1c1f;
+        --bg-card:       #1c1c1f;
+        --bg-input:      #27272a;
+        --bg-hover:      #2e2e32;
+        --border:        #3a3a3e;
+        --border-light:  #4a4a50;
+        --border-focus:  #f97316;
+        --border-accent: #3d2a1a;
+        --text-primary:  #f0f0f0;
+        --text-secondary:#c0c0c0;
+        --text-muted:    #909090;
+        --text-faint:    #606060;
+        --text-input:    #f0f0f0;
+        --accent:        #f97316;
+        --accent-hover:  #ea6a0a;
+        --accent-light:  #2d1a0a;
+        --accent-border: #7a3a0a;
+        --accent-text:   #fb923c;
+        --purple:        #c084fc;
+        --purple-wave:   #d8b4fe;
+        --shadow:        rgba(0,0,0,0.4);
+        --scrollbar:     #3f3f46;
+      }
+
       *, *::before, *::after { box-sizing: border-box; }
 
       body, html {
@@ -14,7 +70,13 @@ fluidPage(
         margin: 0;
         padding: 0;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg-app);
+        color: var(--text-primary);
+        transition: background 0.2s, color 0.2s;
       }
+
+      /* Prevent flash — start dark, JS removes class if user prefers light */
+      body { }
 
       .app-wrapper {
         display: flex;
@@ -27,7 +89,7 @@ fluidPage(
         min-width: 160px;
         max-width: 400px;
         flex-shrink: 0;
-        background: #f7f7f5;
+        background: var(--bg-sidebar);
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -45,7 +107,7 @@ fluidPage(
       #sidebar_resize {
         width: 5px;
         flex-shrink: 0;
-        background: #e0e0dc;
+        background: var(--bg-hover);
         cursor: ew-resize;
         display: flex;
         align-items: center;
@@ -56,7 +118,7 @@ fluidPage(
       }
 
       #sidebar_resize:hover, #sidebar_resize.dragging {
-        background: #b3c8f7;
+        background: var(--border-focus);
       }
 
       #sidebar_resize::after {
@@ -103,7 +165,7 @@ fluidPage(
         position: absolute;
         top: 0; left: 0;
         width: 100%; height: 100%;
-        background: white;
+        background: var(--bg-input);
         z-index: 10;
       }
 
@@ -114,7 +176,7 @@ fluidPage(
         height: 100%;
         flex-direction: column;
         gap: 12px;
-        color: #aaa;
+        color: var(--text-faint);
         font-size: 13px;
       }
 
@@ -122,7 +184,7 @@ fluidPage(
         width: 28px;
         height: 28px;
         border: 3px solid #e0e0dc;
-        border-top-color: #1a56db;
+        border-top-color: var(--accent-text);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       }
@@ -140,15 +202,15 @@ fluidPage(
         justify-content: center;
         flex-direction: column;
         gap: 12px;
-        color: #888;
+        color: var(--text-muted);
         font-size: 13px;
       }
 
       #h_splitter {
         height: 6px;
-        background: #f0f0ec;
-        border-top: 0.5px solid #e0e0dc;
-        border-bottom: 0.5px solid #e0e0dc;
+        background: var(--bg-subtle);
+        border-top: 0.5px solid var(--border);
+        border-bottom: 0.5px solid var(--border);
         cursor: ns-resize;
         flex-shrink: 0;
         display: flex;
@@ -159,8 +221,8 @@ fluidPage(
       }
 
       #h_splitter:hover, #h_splitter.dragging {
-        background: #d8e4f5;
-        border-color: #b3c8f7;
+        background: var(--border-accent);
+        border-color: var(--border-focus);
       }
 
       #h_splitter::after {
@@ -168,7 +230,7 @@ fluidPage(
         width: 32px;
         height: 2px;
         border-radius: 1px;
-        background: #ccc;
+        background: var(--scrollbar);
       }
 
       #bottom_row {
@@ -197,9 +259,9 @@ fluidPage(
 
       #v_splitter {
         width: 6px;
-        background: #f0f0ec;
-        border-left: 0.5px solid #e0e0dc;
-        border-right: 0.5px solid #e0e0dc;
+        background: var(--bg-subtle);
+        border-left: 0.5px solid var(--border);
+        border-right: 0.5px solid var(--border);
         cursor: ew-resize;
         flex-shrink: 0;
         display: flex;
@@ -210,8 +272,8 @@ fluidPage(
       }
 
       #v_splitter:hover, #v_splitter.dragging {
-        background: #d8e4f5;
-        border-color: #b3c8f7;
+        background: var(--border-accent);
+        border-color: var(--border-focus);
       }
 
       #v_splitter::after {
@@ -219,7 +281,7 @@ fluidPage(
         width: 2px;
         height: 32px;
         border-radius: 1px;
-        background: #ccc;
+        background: var(--scrollbar);
       }
 
       .bl-tabs {
@@ -233,18 +295,18 @@ fluidPage(
         font-size: 10px;
         padding: 3px 8px;
         border-radius: 4px;
-        border: 0.5px solid #d0d0cc;
-        background: white;
-        color: #888;
+        border: 0.5px solid var(--border-light);
+        background: var(--bg-input);
+        color: var(--text-muted);
         cursor: pointer;
         user-select: none;
         white-space: nowrap;
       }
 
       .bl-tab.active {
-        background: #e8f0fe;
-        color: #1a56db;
-        border-color: #b3c8f7;
+        background: var(--accent-light);
+        color: var(--accent-text);
+        border-color: var(--border-focus);
         font-weight: 500;
       }
 
@@ -259,11 +321,11 @@ fluidPage(
 
       /* ── Now playing box ──────────────────────────────────────────────────── */
       .now-playing {
-        background: #f7f7f5;
-        border: 0.5px solid #e0e0dc;
+        background: var(--bg-sidebar);
+        border: 0.5px solid var(--border);
         border-radius: 8px;
         font-size: 11px;
-        color: #444;
+        color: var(--text-primary);
         position: relative;
         flex-shrink: 0;
         height: 90px;
@@ -287,8 +349,8 @@ fluidPage(
         flex-direction: row;
         align-items: stretch;
         flex-shrink: 0;
-        border-left: 0.5px solid #e0e0dc;
-        background: #f0f0ec;
+        border-left: 0.5px solid var(--border);
+        background: var(--bg-subtle);
         border-radius: 0 8px 8px 0;
         height: 90px;
         box-sizing: border-box;
@@ -301,21 +363,21 @@ fluidPage(
         align-items: center;
         gap: 6px;
         padding: 5px 8px;
-        border-top: 0.5px solid #e0e0dc;
-        background: #f7f7f5;
+        border-top: 0.5px solid var(--border);
+        background: var(--bg-sidebar);
       }
 
       #audio_linked_dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #d1d5db;
+        background: var(--scrollbar);
         flex-shrink: 0;
       }
 
       #audio_linked_label {
         font-size: 9px;
-        color: #aaa;
+        color: var(--text-faint);
         letter-spacing: 0.05em;
         user-select: none;
       }
@@ -336,7 +398,7 @@ fluidPage(
         align-items: center;
         justify-content: center;
         padding: 6px 4px;
-        border-left: 0.5px solid #e0e0dc;
+        border-left: 0.5px solid var(--border);
         flex-shrink: 0;
       }
 
@@ -345,7 +407,7 @@ fluidPage(
         border: none;
         padding: 2px;
         cursor: pointer;
-        color: #888;
+        color: var(--text-muted);
         font-size: 12px;
         line-height: 1;
         display: flex;
@@ -360,7 +422,7 @@ fluidPage(
         width: 100%;
         height: 90px;
         flex-shrink: 0;
-        border: 0.5px solid #e0e0dc;
+        border: 0.5px solid var(--border);
         border-radius: 6px;
         overflow: hidden;
       }
@@ -369,7 +431,7 @@ fluidPage(
         width: 100%;
         flex: 1;
         min-height: 0;
-        border: 0.5px solid #e0e0dc;
+        border: 0.5px solid var(--border);
         border-radius: 6px;
         overflow: hidden;
         margin-top: 6px;
@@ -383,23 +445,38 @@ fluidPage(
         margin-bottom: 10px;
       }
 
+      /* Dark mode toggle */
+      #dark_toggle {
+        background: none;
+        border: 0.5px solid var(--border);
+        border-radius: 5px;
+        padding: 3px 7px;
+        cursor: pointer;
+        font-size: 11px;
+        color: var(--text-muted);
+        line-height: 1;
+        flex-shrink: 0;
+        transition: background 0.1s;
+      }
+      #dark_toggle:hover { background: var(--bg-hover); }
+
       .sidebar-tab {
         flex: 1;
         font-size: 11px;
         padding: 4px 0;
         text-align: center;
         border-radius: 5px;
-        border: 0.5px solid #d0d0cc;
-        background: white;
-        color: #666;
+        border: 0.5px solid var(--border-light);
+        background: var(--bg-input);
+        color: var(--text-muted);
         cursor: pointer;
         user-select: none;
       }
 
       .sidebar-tab.active {
-        background: #e8f0fe;
-        color: #1a56db;
-        border-color: #b3c8f7;
+        background: var(--accent-light);
+        color: var(--accent-text);
+        border-color: var(--border-focus);
         font-weight: 500;
       }
 
@@ -412,19 +489,19 @@ fluidPage(
       .section-divider {
         font-size: 9px;
         font-weight: 600;
-        color: #1a56db;
+        color: var(--accent-text);
         letter-spacing: 0.08em;
         text-transform: uppercase;
         margin-top: 12px;
         margin-bottom: 4px;
         padding-bottom: 3px;
-        border-bottom: 0.5px solid #d8e4f5;
+        border-bottom: 0.5px solid var(--border-accent);
         display: block;
       }
 
       .s-label {
         font-size: 10px;
-        color: #aaa;
+        color: var(--text-faint);
         letter-spacing: 0.04em;
         margin-top: 8px;
         margin-bottom: 3px;
@@ -436,8 +513,8 @@ fluidPage(
       .btn-compute {
         width: 100%;
         margin-top: 12px;
-        background: #1a56db;
-        color: white;
+        background: var(--accent);
+        color: #fff;
         border: none;
         border-radius: 6px;
         padding: 6px 0;
@@ -452,8 +529,8 @@ fluidPage(
       }
 
       .setup-card {
-        background: #f7f7f5;
-        border: 0.5px solid #e0e0dc;
+        background: var(--bg-sidebar);
+        border: 0.5px solid var(--border);
         border-radius: 10px;
         padding: 14px 16px;
         margin-bottom: 10px;
@@ -462,7 +539,7 @@ fluidPage(
       .setup-card-title {
         font-size: 12px;
         font-weight: 500;
-        color: #333;
+        color: var(--text-primary);
         margin-bottom: 10px;
       }
 
@@ -478,7 +555,7 @@ fluidPage(
 
       .filter-link {
         font-size: 9px;
-        color: #1a56db;
+        color: var(--accent-text);
         cursor: pointer;
         text-decoration: none;
         user-select: none;
@@ -487,11 +564,11 @@ fluidPage(
         padding: 0;
       }
 
-      .filter-link.none { color: #999; }
+      .filter-link.none { color: var(--text-faint); }
 
       .index-selector-box {
-        background: white;
-        border: 0.5px solid #e0e0dc;
+        background: var(--bg-input);
+        border: 0.5px solid var(--border);
         border-radius: 6px;
         padding: 6px 8px;
         max-height: 130px;
@@ -500,8 +577,8 @@ fluidPage(
       }
 
       .meta-filter-box {
-        background: white;
-        border: 0.5px solid #e0e0dc;
+        background: var(--bg-input);
+        border: 0.5px solid var(--border);
         border-radius: 6px;
         padding: 4px 8px;
         max-height: 90px;
@@ -524,13 +601,13 @@ fluidPage(
         height: 11px;
         flex-shrink: 0;
         cursor: pointer;
-        accent-color: #1a56db;
+        accent-color: var(--accent-text);
         margin: 0;
       }
 
       .cb-row span {
         font-size: 10px;
-        color: #333;
+        color: var(--text-primary);
         line-height: 1.3;
       }
 
@@ -551,7 +628,7 @@ fluidPage(
         gap: 6px !important;
         font-size: 10px !important;
         font-weight: 400 !important;
-        color: #333 !important;
+        color: var(--text-primary) !important;
         min-height: 0 !important;
         padding: 1px 0 !important;
         cursor: pointer !important;
@@ -564,7 +641,7 @@ fluidPage(
         width: 11px !important;
         height: 11px !important;
         flex-shrink: 0 !important;
-        accent-color: #1a56db !important;
+        accent-color: var(--accent-text) !important;
       }
 
       .pca-axes-row {
@@ -580,7 +657,7 @@ fluidPage(
 
       .pca-axes-row label {
         font-size: 9px !important;
-        color: #aaa !important;
+        color: var(--text-faint) !important;
         margin-bottom: 2px !important;
       }
 
@@ -605,14 +682,14 @@ fluidPage(
         font-size: 10px !important;
         padding: 3px 5px !important;
         height: 26px !important;
-        border: 0.5px solid #e0e0dc !important;
+        border: 0.5px solid var(--border) !important;
         border-radius: 4px !important;
         width: 100% !important;
       }
 
       .date-range-row label {
         font-size: 9px !important;
-        color: #aaa !important;
+        color: var(--text-faint) !important;
         margin-bottom: 2px !important;
       }
 
@@ -624,7 +701,7 @@ fluidPage(
 
       /* ── Shiny slider ──────────────────────────────────────────────────────── */
       .irs--shiny .irs-bar {
-        background: #1a56db !important;
+        background: var(--accent) !important;
         border-top: none !important;
         border-bottom: none !important;
         height: 4px !important;
@@ -632,7 +709,7 @@ fluidPage(
       }
 
       .irs--shiny .irs-line {
-        background: #e0e0dc !important;
+        background: var(--bg-hover) !important;
         border: none !important;
         height: 4px !important;
         top: 25px !important;
@@ -640,7 +717,7 @@ fluidPage(
       }
 
       .irs--shiny .irs-handle {
-        background: #1a56db !important;
+        background: var(--accent) !important;
         border: none !important;
         box-shadow: none !important;
         width: 10px !important;
@@ -652,7 +729,7 @@ fluidPage(
 
       .irs--shiny .irs-handle:hover,
       .irs--shiny .irs-handle.state_hover {
-        background: #0f3ba8 !important;
+        background: var(--accent-hover) !important;
       }
 
       .irs--shiny .irs-from,
@@ -668,6 +745,87 @@ fluidPage(
       .sidebar .irs-with-grid { margin-bottom: 0 !important; }
 
       .hidden { display: none; }
+
+      /* Accent buttons */
+      .btn-accent {
+        background: var(--accent) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        width: 100%;
+      }
+      .btn-accent:hover { opacity: 0.88; }
+      .btn-accent:active { opacity: 0.75; }
+
+      /* ── Dark mode element overrides ────────────────────────────────────── */
+      body.dark .setup-card          { background: var(--bg-card); border-color: var(--border); }
+      body.dark .setup-card-title    { color: var(--text-primary); }
+      body.dark .now-playing         { background: var(--bg-card); border-color: var(--border); }
+      body.dark #now_playing_controls{ background: var(--bg-subtle); border-color: var(--border); }
+      body.dark #now_playing_btn_col { border-color: var(--border); }
+      body.dark .vol-btn             { color: var(--text-muted); }
+      body.dark .bl-tab              { background: var(--bg-input); border-color: var(--border); color: var(--text-muted); }
+      body.dark .bl-tab.active       { background: var(--accent-light); color: var(--accent-text); border-color: var(--accent-border); }
+      body.dark .sidebar-tab         { background: var(--bg-input); border-color: var(--border); color: var(--text-muted); }
+      body.dark .sidebar-tab.active  { background: var(--accent-light); color: var(--accent-text); border-color: var(--accent-border); }
+      body.dark .index-selector-box  { background: var(--bg-input); border-color: var(--border); }
+      body.dark .meta-filter-box     { background: var(--bg-input); border-color: var(--border); }
+      body.dark .cb-row span         { color: var(--text-primary); }
+      body.dark #waveform            { border-color: var(--border); }
+      body.dark #spectrogram         { border-color: var(--border); }
+      body.dark .selectize-input     { background: var(--bg-input) !important; color: var(--text-input) !important; border-color: var(--border) !important; }
+      body.dark .selectize-dropdown  { background: var(--bg-input) !important; border-color: var(--border) !important; color: var(--text-input) !important; }
+      body.dark .selectize-dropdown-content .option { color: var(--text-input) !important; background: transparent !important; }
+      body.dark .selectize-dropdown-content .option:hover  { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+      body.dark .selectize-dropdown-content .option.active { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+      body.dark .selectize-dropdown-content .option.selected { background: transparent !important; color: var(--text-primary) !important; }
+      body.dark input[type='date']   { background: var(--bg-input); color: var(--text-input); border-color: var(--border) !important; }
+      body.dark .irs--shiny .irs-line { background: var(--border) !important; }
+      body.dark .irs--shiny .irs-bar  { background: var(--accent) !important; }
+      body.dark .irs--shiny .irs-handle { background: var(--accent) !important; }
+      body.dark .btn-compute         { background: var(--accent); }
+      body.dark .shiny-notification  { background: var(--bg-card); border-color: var(--border); color: var(--text-primary); }
+      body.dark #audio_linked_row    { background: var(--bg-subtle); border-color: var(--border); }
+      body.dark .section-divider     { color: var(--accent-text); border-color: var(--border-accent); }
+      body.dark .s-label             { color: var(--text-faint); }
+      body.dark .filter-link         { color: var(--accent-text); }
+      body.dark pre, body.dark .shiny-text-output { background: var(--bg-subtle); color: var(--text-primary); border-color: var(--border); }
+
+      /* Remove blue text selection highlight in dark mode */
+      body.dark ::selection          { background: rgba(249,115,22,0.25); color: var(--text-primary); }
+      body.dark *:focus              { outline-color: var(--accent); }
+
+      /* All white input boxes → dark in dark mode */
+      body.dark input[type='text'],
+      body.dark input[type='number'],
+      body.dark input[type='search'],
+      body.dark input[type='password'],
+      body.dark input[type='email'],
+      body.dark textarea,
+      body.dark select,
+      body.dark .form-control         { background: var(--bg-input) !important; color: var(--text-input) !important; border-color: var(--border) !important; }
+      body.dark .shiny-input-container .form-control { background: var(--bg-input) !important; color: var(--text-input) !important; }
+      body.dark .selectize-input.items { background: var(--bg-input) !important; color: var(--text-input) !important; border-color: var(--border) !important; }
+      body.dark .selectize-input .item { background: var(--bg-hover) !important; color: var(--text-primary) !important; border: none !important; box-shadow: none !important; }
+      body.dark .well                  { background: var(--bg-card) !important; border-color: var(--border) !important; }
+
+      /* Scrollbars */
+      body.dark ::-webkit-scrollbar       { width: 6px; height: 6px; }
+      body.dark ::-webkit-scrollbar-track { background: var(--bg-subtle); }
+      body.dark ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+
+      /* Palette panel dark mode */
+      body.dark .pal-preset-btn          { background: var(--bg-input) !important; border-color: var(--border) !important; color: var(--text-muted) !important; }
+      body.dark .pal-level-row           { background: var(--bg-subtle) !important; border-color: var(--border) !important; }
+      body.dark .pal-level-row:hover     { background: var(--bg-hover) !important; }
+      body.dark .pal-hex-label           { color: var(--text-muted) !important; }
+      body.dark .pal-col-header          { color: var(--text-primary) !important; border-color: var(--border-accent) !important; }
+      body.dark .pal-save-btn            { background: var(--accent) !important; }
+      body.dark [id*=pal_pbtn_]        { background: var(--bg-input) !important; border-color: var(--border) !important; }
+      body.dark [id*=pal_pbtn_] span   { color: var(--text-muted) !important; }
     "))
   ),
   
@@ -676,11 +834,16 @@ fluidPage(
       div(id = "sidebar", class = "sidebar",
           div(class = "sidebar-inner",
               
-              div(class = "sidebar-tabs",
-                  div(id = "tab_setup", class = "sidebar-tab active", "Setup",
-                      onclick = "switchTab('setup')"),
-                  div(id = "tab_analysis", class = "sidebar-tab disabled-tab", "Analysis",
-                      onclick = "if(!this.classList.contains('disabled-tab')) switchTab('analysis')")
+              div(style = "display:flex; align-items:center; gap:4px; margin-bottom:10px;",
+                  div(id = "tab_setup", class = "sidebar-tab active",
+                      style = "flex:1; margin-bottom:0;",
+                      "Setup", onclick = "switchTab('setup')"),
+                  div(id = "tab_analysis", class = "sidebar-tab disabled-tab",
+                      style = "flex:1; margin-bottom:0;",
+                      "Analysis",
+                      onclick = "if(!this.classList.contains('disabled-tab')) switchTab('analysis')"),
+                  tags$button(id = "dark_toggle", onclick = "toggleDark()",
+                              title = "Toggle dark mode", "☽")
               ),
               
               div(id = "audio_linked_row",

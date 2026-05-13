@@ -25,7 +25,7 @@ projectUI <- function(id) {
       ns("open_project"),
       "Open project",
       width = "100%",
-      class = "btn-sm btn-primary",
+      class = "btn-sm btn-accent",
       style = "margin-bottom: 6px;"
     ),
     hr(style = "margin: 8px 0;"),
@@ -164,3 +164,4 @@ write_config <- function(proj_dir, config) {
   path <- file.path(proj_dir, "config.json")
   jsonlite::write_json(config, path, pretty = TRUE, auto_unbox = TRUE)
 }
+

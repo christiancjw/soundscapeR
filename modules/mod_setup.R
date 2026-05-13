@@ -150,17 +150,13 @@ setupServer <- function(id, active_config) {
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 3 — Save and apply"),
             fluidRow(
-              column(3,
+              column(6,
                      actionButton(ns("link_files"), "Test links",
-                                  class = "btn-sm", width = "100%")
+                                  class = "btn-sm btn-accent", width = "100%")
               ),
-              column(3,
-                     actionButton(ns("save_config"), "Save config",
-                                  class = "btn-sm", width = "100%")
-              ),
-              column(3,
-                     actionButton(ns("apply"), "Apply",
-                                  class = "btn-primary btn-sm", width = "100%")
+              column(6,
+                     actionButton(ns("apply"), "Save & Apply",
+                                  class = "btn-sm btn-accent", width = "100%")
               )
             ),
             uiOutput(ns("validation_summary")),
@@ -270,7 +266,31 @@ setupServer <- function(id, active_config) {
       
       showNotification("Applying...", id = "apply_msg", duration = NULL)
       removeNotification("apply_msg")
-      showNotification("Ready.", type = "message", duration = 2)
+      
+      # Save config to disk on every apply
+      proj_dir <- if (!is.null(cfg$proj_dir) && nchar(cfg$proj_dir) > 0)
+        cfg$proj_dir
+      else if (!is.null(cfg$csv_path) && nchar(cfg$csv_path) > 0)
+        dirname(dirname(cfg$csv_path))
+      else
+        file.path(PROJECTS_ROOT, cfg$project_name)
+      
+      write_config(proj_dir, list(
+        project_name     = cfg$project_name,
+        csv_path         = cfg$csv_path,
+        date_column      = input$date_col,
+        time_column      = input$time_col,
+        index_columns    = as.list(input$index_cols),
+        metadata_columns = as.list(input$meta_cols),
+        filename_column  = input$filename_col,
+        audio_root       = input$audio_root,
+        audio_path_mode  = input$audio_path_mode,
+        folder_structure = input$folder_structure,
+        use_datetime     = use_dt,
+        palettes         = palette_config()
+      ))
+      
+      showNotification("Saved & applied.", type = "message", duration = 2)
       
       output_data(package_output(
         df             = df,
@@ -407,32 +427,7 @@ setupServer <- function(id, active_config) {
     }, striped = TRUE, width = "100%", spacing = "xs")
     
     # ── Save config ────────────────────────────────────────────────────────────
-    observeEvent(input$save_config, {
-      cfg      <- active_config()
-      req(cfg)
-      # Use canonical proj_dir stamped at open time
-      proj_dir <- if (!is.null(cfg$proj_dir) && nchar(cfg$proj_dir) > 0)
-        cfg$proj_dir
-      else if (!is.null(cfg$csv_path) && nchar(cfg$csv_path) > 0)
-        dirname(dirname(cfg$csv_path))
-      else
-        file.path(PROJECTS_ROOT, cfg$project_name)
-      write_config(proj_dir, list(
-        project_name     = cfg$project_name,
-        csv_path         = cfg$csv_path,
-        date_column      = input$date_col,
-        time_column      = input$time_col,
-        index_columns    = as.list(input$index_cols),
-        metadata_columns = as.list(input$meta_cols),
-        filename_column  = input$filename_col,
-        audio_root       = input$audio_root,
-        audio_path_mode  = input$audio_path_mode,
-        folder_structure = input$folder_structure,
-        use_datetime     = get_use_datetime(),
-        palettes         = palette_config()
-      ))
-      showNotification("Config saved.", type = "message", duration = 3)
-    })
+    
     
     # ── Palette module ─────────────────────────────────────────────────────────
     palette_out       <- paletteServer("palette", active_config, output_data)

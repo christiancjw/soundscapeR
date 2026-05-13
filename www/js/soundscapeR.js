@@ -1,3 +1,29 @@
+// ── Dark mode ────────────────────────────────────────────────────────────────
+function toggleDark() {
+  var body = document.body;
+  var btn  = document.getElementById('dark_toggle');
+  var dark = body.classList.toggle('dark');
+  if (btn) btn.textContent = dark ? '☀' : '☽';
+  try { localStorage.setItem('soundscapeR_dark', dark ? '1' : '0'); } catch(e) {}
+  // Notify Shiny so plot can re-render with dark layout
+  Shiny.setInputValue('dark_mode', dark, {priority: 'event'});
+  // Update wavesurfer colours if loaded
+
+}
+
+// Default to dark mode — only switch to light if user explicitly chose it
+(function() {
+  try {
+    var pref = localStorage.getItem('soundscapeR_dark');
+    if (pref === null || pref === '1') {
+      document.body.classList.add('dark');
+    }
+    // else pref === '0' — stay light
+  } catch(e) {
+    document.body.classList.add('dark');
+  }
+})();
+
 // ── Bottom-left tab switching ─────────────────────────────────────────────────
 function switchBLTab(tab) {
   document.querySelectorAll('.bl-tab').forEach(function(t) {
@@ -528,6 +554,21 @@ $(document).ready(function() {
 
   applyLayout();
   window.addEventListener('resize', applyLayout);
+
+  // Sync toggle button and notify Shiny of initial dark state
+  try {
+    var pref   = localStorage.getItem('soundscapeR_dark');
+    var isDark = (pref === null || pref === '1');  // default dark
+    var btn    = document.getElementById('dark_toggle');
+    if (isDark) {
+      document.body.classList.add('dark');
+      if (btn) btn.textContent = '☀';
+    } else {
+      document.body.classList.remove('dark');
+      if (btn) btn.textContent = '☽';
+    }
+    Shiny.setInputValue('dark_mode', isDark);
+  } catch(e) {}
 
   // ── Non-wavesurfer message handlers (registered immediately) ─────────────────
   Shiny.addCustomMessageHandler('update_now_playing', function(msg) {

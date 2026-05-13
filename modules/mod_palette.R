@@ -86,7 +86,7 @@ paletteServer <- function(id, active_config, app_data) {
       if (is.null(ad)) return(
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 4 — Colour palettes"),
-            div(style = "font-size:11px; color:#aaa;",
+            div(style = "font-size:11px; color:var(--text-faint,#aaa);",
                 "Click Apply in Step 3 to load palette options.")
         )
       )
@@ -95,7 +95,7 @@ paletteServer <- function(id, active_config, app_data) {
       if (length(fcols) == 0) return(
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 4 — Colour palettes"),
-            div(style = "font-size:11px; color:#aaa;", "No metadata columns.")
+            div(style = "font-size:11px; color:var(--text-faint,#aaa);", "No metadata columns.")
         )
       )
       
@@ -115,9 +115,9 @@ paletteServer <- function(id, active_config, app_data) {
                   style = paste0(
                     "font-size:10px; padding:3px 10px; border-radius:4px; ",
                     "border:0.5px solid ",
-                    if (is_sel) "#1a56db" else "#d0d0cc", "; ",
-                    "background:", if (is_sel) "#e8f0fe" else "white", "; ",
-                    "color:", if (is_sel) "#1a56db" else "#666", "; ",
+                    if (is_sel) "var(--accent,#7c3aed)" else "var(--border-light,#d0d0cc)", "; ",
+                    "background:", if (is_sel) "var(--accent-light,#ede9f7)" else "var(--bg-input,white)", "; ",
+                    "color:", if (is_sel) "var(--accent-text,#7c3aed)" else "var(--text-muted,#666)", "; ",
                     "cursor:pointer; display:flex; align-items:center; gap:5px;"
                   ),
                   onclick = paste0(
@@ -126,7 +126,7 @@ paletteServer <- function(id, active_config, app_data) {
                   ),
                   tags$span(style = paste0(
                     "width:7px; height:7px; border-radius:50%; flex-shrink:0; ",
-                    "background:", if (is_active) "#00A087" else "#e0e0dc", ";"
+                    "background:", if (is_active) "#00A087" else "var(--border,#e0e0dc)", ";"
                   )),
                   col
                 )
@@ -194,7 +194,7 @@ paletteServer <- function(id, active_config, app_data) {
         
         # Preset buttons
         div(style = "margin-bottom:10px;",
-            div(style = "font-size:11px; color:#888; margin-bottom:5px;",
+            div(style = "font-size:11px; color:var(--text-muted,#888); margin-bottom:5px;",
                 "1. Choose a preset to start from"),
             div(style = "display:flex; gap:5px; flex-wrap:wrap;",
                 lapply(preset_names, function(pname) {
@@ -250,11 +250,11 @@ paletteServer <- function(id, active_config, app_data) {
                     id    = paste0("pal_pbtn_", sid(col), "_", sid(pname)),
                     style = "display:flex; flex-direction:column; gap:3px;
                          padding:5px 8px; border-radius:5px; cursor:pointer;
-                         align-items:center; border:0.5px solid #d0d0cc;
-                         background:white;",
+                         align-items:center; border:0.5px solid var(--border-light,#d0d0cc);
+                         background:var(--bg-input,white);",
                     onclick = btn_onclick,
                     div(style = "display:flex; gap:2px;", dots),
-                    span(style = "font-size:9px; color:#666;", pname)
+                    span(style = "font-size:9px; color:var(--text-muted,#666);", pname)
                   )
                 })
             )
@@ -264,14 +264,14 @@ paletteServer <- function(id, active_config, app_data) {
         div(style = "margin-bottom:10px;",
             div(style = "display:flex; justify-content:space-between;
                        align-items:center; margin-bottom:5px;",
-                span(style = "font-size:11px; color:#888;",
+                span(style = "font-size:11px; color:var(--text-muted,#888);",
                      "2. Fine-tune and reorder levels"),
-                span(style = "font-size:10px; color:#bbb; font-style:italic;",
+                span(style = "font-size:10px; color:var(--text-faint,#bbb); font-style:italic;",
                      "drag rows to reorder")
             ),
             div(
               id    = list_id,
-              style = "background:#f7f7f5; border:0.5px solid #e0e0dc;
+              style = "background:var(--bg-sidebar,#f7f7f5); border:0.5px solid var(--border,#e0e0dc);
                      border-radius:6px; padding:6px 10px;
                      max-height:280px; overflow-y:auto;",
               lapply(levels_vec, function(lv) {
@@ -284,7 +284,7 @@ paletteServer <- function(id, active_config, app_data) {
                   `data-level` = lv,
                   draggable    = "true",
                   style = "display:flex; align-items:center; gap:8px;
-                         padding:5px 0; border-bottom:0.5px solid #e0e0dc;
+                         padding:5px 0; border-bottom:0.5px solid var(--border,#e0e0dc);
                          cursor:grab; user-select:none; background:transparent;
                          transition: opacity 0.15s;",
                   ondragstart = paste0("PAL.dragStart(event,'", list_id, "')"),
@@ -294,7 +294,7 @@ paletteServer <- function(id, active_config, app_data) {
                   
                   # Drag handle (two vertical dots)
                   span(
-                    style = "color:#ccc; font-size:13px; flex-shrink:0;
+                    style = "color:var(--text-faint,#ccc); font-size:13px; flex-shrink:0;
                            line-height:1; letter-spacing:-2px;",
                     HTML("&#8942;&#8942;")
                   ),
@@ -314,12 +314,12 @@ paletteServer <- function(id, active_config, app_data) {
                   ),
                   
                   # Level name
-                  span(style = "font-size:11px; color:#333; flex:1;", lv),
+                  span(style = "font-size:11px; color:var(--text-primary,#333); flex:1;", lv),
                   
                   # Hex display
                   span(
                     id    = paste0(el_id, "_hex"),
-                    style = "font-size:10px; color:#aaa; font-family:monospace;",
+                    style = "font-size:10px; color:var(--text-faint,#aaa); font-family:monospace;",
                     cur_col
                   )
                 )
@@ -330,7 +330,7 @@ paletteServer <- function(id, active_config, app_data) {
         # Save
         div(style = "display:flex; gap:8px; align-items:center;",
             tags$button("3. Save palette",
-                        style = "font-size:11px; padding:5px 16px; background:#1a56db;
+                        style = "font-size:11px; padding:5px 16px; background:var(--accent,#7c3aed);
                      color:white; border:none; border-radius:5px; cursor:pointer;",
                         onclick = paste0(
                           "PAL.save(",
