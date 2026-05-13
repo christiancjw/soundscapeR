@@ -1,3 +1,21 @@
+# ── Auto-install missing dependencies ────────────────────────────────────────
+.required_packages <- c(
+  "shiny", "plotly", "dplyr", "lubridate", "stringr",
+  "shinyjs", "jsonlite", "data.table", "GGally"
+)
+
+.missing <- .required_packages[
+  !sapply(.required_packages, requireNamespace, quietly = TRUE)
+]
+
+if (length(.missing) > 0) {
+  message("SoundscapeR: installing missing packages: ",
+          paste(.missing, collapse = ", "))
+  install.packages(.missing, repos = "https://cloud.r-project.org",
+                   quiet = TRUE)
+  message("SoundscapeR: installation complete.")
+}
+
 library(shiny)
 library(plotly)
 library(dplyr)

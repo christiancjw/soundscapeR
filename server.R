@@ -448,9 +448,28 @@ function(input, output, session) {
     }
     filename <- if (fn_col %in% colnames(row))
       trimws(as.character(row[[fn_col]][1])) else return(NULL)
-    local_path <- file.path(root, p, paste0(filename, ".wav"))
-    root_esc   <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", root)
-    paste0("audio/", sub(paste0("^", root_esc, "/?"), "", local_path))
+    
+    # Strip any existing extension so filenames with or without work identically
+    filename_base <- tools::file_path_sans_ext(filename)
+    root_esc      <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", root)
+    
+    to_url <- function(lp) {
+      paste0("audio/", sub(paste0("^", root_esc, "/?"), "", lp))
+    }
+    
+    # Try common audio extensions in order of likelihood
+    for (ext in c(".wav", ".WAV", ".mp3", ".MP3",
+                  ".flac", ".FLAC", ".ogg", ".OGG",
+                  ".aif", ".aiff", ".AIFF")) {
+      lp <- file.path(root, p, paste0(filename_base, ext))
+      if (file.exists(lp)) return(to_url(lp))
+    }
+    
+    # Fallback: try filename exactly as stored (may already include extension)
+    lp <- file.path(root, p, filename)
+    if (file.exists(lp)) return(to_url(lp))
+    
+    NULL
   }
   
   # ── Add time bins ─────────────────────────────────────────────────────────────

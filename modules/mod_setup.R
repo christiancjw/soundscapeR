@@ -61,18 +61,53 @@ setupServer <- function(id, active_config) {
             
             conditionalPanel(
               condition = paste0("input['", ns("use_datetime"), "']"),
+              
+              # ── Date column + preview + format ──────────────────────────────
               fluidRow(
                 column(6,
                        div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
                            "Date column"),
                        selectInput(ns("date_col"), label = NULL,
-                                   choices = NULL, multiple = FALSE, width = "100%")
+                                   choices = NULL, multiple = FALSE, width = "100%"),
+                       uiOutput(ns("date_preview")),
+                       div(style = "font-size: 11px; color: #888;
+                               margin-top: 6px; margin-bottom: 3px;",
+                           "Date format"),
+                       selectInput(ns("date_format"), label = NULL, width = "100%",
+                                   choices = c(
+                                     "YYYYMMDD (integer)"    = "YYYYMMDD",
+                                     "YYYY-MM-DD"            = "YYYY-MM-DD",
+                                     "DD/MM/YYYY"            = "DD/MM/YYYY",
+                                     "MM/DD/YYYY"            = "MM/DD/YYYY",
+                                     "YYYY/MM/DD"            = "YYYY/MM/DD",
+                                     "DD-MM-YYYY"            = "DD-MM-YYYY",
+                                     "Combined datetime col" = "datetime"
+                                   ))
                 ),
+                
+                # ── Time column + preview + format (hidden for datetime format) ──
                 column(6,
-                       div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                           "Time column"),
-                       selectInput(ns("time_col"), label = NULL,
-                                   choices = NULL, multiple = FALSE, width = "100%")
+                       conditionalPanel(
+                         condition = paste0(
+                           "input['", ns("date_format"), "'] !== 'datetime'"
+                         ),
+                         div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
+                             "Time column"),
+                         selectInput(ns("time_col"), label = NULL,
+                                     choices = NULL, multiple = FALSE, width = "100%"),
+                         uiOutput(ns("time_preview")),
+                         div(style = "font-size: 11px; color: #888;
+                                 margin-top: 6px; margin-bottom: 3px;",
+                             "Time format"),
+                         selectInput(ns("time_format"), label = NULL, width = "100%",
+                                     choices = c(
+                                       "HHMMSS (integer)"      = "HHMMSS",
+                                       "HH:MM:SS"              = "HH:MM:SS",
+                                       "HH:MM"                 = "HH:MM",
+                                       "Minutes since midnight" = "minutes",
+                                       "Seconds since midnight" = "seconds"
+                                     ))
+                       )
                 )
               )
             ),
@@ -210,6 +245,10 @@ setupServer <- function(id, active_config) {
       if (!is.null(cfg$audio_path_mode) && cfg$audio_path_mode != "")
         updateSelectInput(session, "audio_path_mode",
                           selected = cfg$audio_path_mode)
+      if (!is.null(cfg$date_format) && cfg$date_format != "")
+        updateSelectInput(session, "date_format", selected = cfg$date_format)
+      if (!is.null(cfg$time_format) && cfg$time_format != "")
+        updateSelectInput(session, "time_format", selected = cfg$time_format)
       if (!is.null(cfg$audio_root) && cfg$audio_root != "")
         updateTextInput(session, "audio_root", value = cfg$audio_root)
       if (!is.null(cfg$folder_structure) && cfg$folder_structure != "")
@@ -222,16 +261,107 @@ setupServer <- function(id, active_config) {
       )
     })
     
+    # ── Date / time parsers ───────────────────────────────────────────────────
+    parse_date_col <- function(x, fmt) {
+      tryCatch({
+        switch(fmt,
+               "YYYYMMDD"   = as.integer(x),
+               "YYYY-MM-DD" = as.integer(format(as.Date(as.character(x), "%Y-%m-%d"), "%Y%m%d")),
+               "DD/MM/YYYY" = as.integer(format(as.Date(as.character(x), "%d/%m/%Y"), "%Y%m%d")),
+               "MM/DD/YYYY" = as.integer(format(as.Date(as.character(x), "%m/%d/%Y"), "%Y%m%d")),
+               "YYYY/MM/DD" = as.integer(format(as.Date(as.character(x), "%Y/%m/%d"), "%Y%m%d")),
+               "DD-MM-YYYY" = as.integer(format(as.Date(as.character(x), "%d-%m-%Y"), "%Y%m%d")),
+               "datetime"   = {
+                 parsed <- tryCatch(
+                   as.POSIXct(as.character(x), tryFormats = c(
+                     "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                     "%Y-%m-%d %H:%M",
+                     "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+                     "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M",
+                     "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M",
+                     "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"
+                   )),
+                   error = function(e) as.POSIXct(NA)
+                 )
+                 as.integer(format(parsed, "%Y%m%d"))
+               },
+               as.integer(x)
+        )
+      }, error = function(e) {
+        showNotification(paste("Date parse error:", e$message), type = "warning", duration = 5)
+        suppressWarnings(as.integer(x))
+      })
+    }
+    
+    parse_time_col <- function(x, fmt, datetime_vals = NULL) {
+      tryCatch({
+        switch(fmt,
+               "HHMMSS"   = as.numeric(x),
+               "HH:MM:SS" = {
+                 sapply(strsplit(as.character(x), ":"), function(p) {
+                   h <- suppressWarnings(as.numeric(p[1]))
+                   m <- suppressWarnings(as.numeric(p[2]))
+                   s <- if (length(p) >= 3) suppressWarnings(as.numeric(p[3])) else 0
+                   ifelse(is.na(h) | is.na(m), NA_real_,
+                          h * 10000 + m * 100 + ifelse(is.na(s), 0, s))
+                 })
+               },
+               "HH:MM" = {
+                 sapply(strsplit(as.character(x), ":"), function(p) {
+                   h <- suppressWarnings(as.numeric(p[1]))
+                   m <- suppressWarnings(as.numeric(p[2]))
+                   ifelse(is.na(h) | is.na(m), NA_real_, h * 10000 + m * 100)
+                 })
+               },
+               "minutes" = {
+                 m <- as.numeric(x)
+                 floor(m / 60) * 10000 + floor(m %% 60) * 100
+               },
+               "seconds" = {
+                 s <- as.numeric(x)
+                 floor(s / 3600) * 10000 + floor((s %% 3600) / 60) * 100 + floor(s %% 60)
+               },
+               "in_date" = {
+                 if (!is.null(datetime_vals)) {
+                   parsed <- tryCatch(
+                     as.POSIXct(as.character(datetime_vals), tryFormats = c(
+                       "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                       "%Y-%m-%d %H:%M",
+                       "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+                       "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M",
+                       "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"
+                     )),
+                     error = function(e) as.POSIXct(NA)
+                   )
+                   as.numeric(format(parsed, "%H%M%S"))
+                 } else as.numeric(x)
+               },
+               as.numeric(x)
+        )
+      }, error = function(e) {
+        showNotification(paste("Time parse error:", e$message), type = "warning", duration = 5)
+        suppressWarnings(as.numeric(x))
+      })
+    }
+    
     # ── Helper: package output ─────────────────────────────────────────────────
     package_output <- function(df, cfg, index_cols, meta_cols,
                                fn_col, date_col, time_col, audio_root,
                                audio_mode, folder_pattern, path_col,
-                               use_datetime) {
+                               use_datetime, date_fmt = "YYYYMMDD",
+                               time_fmt = "HHMMSS") {
       if (use_datetime) {
         if (date_col %in% colnames(df))
-          df[[date_col]] <- as.integer(df[[date_col]])
-        if (time_col %in% colnames(df))
-          df[[time_col]] <- as.numeric(df[[time_col]])
+          df[[date_col]] <- parse_date_col(df[[date_col]], date_fmt)
+        if (time_fmt == "in_date") {
+          # Extract time from datetime column into synthetic column
+          if (date_col %in% colnames(df)) {
+            df[["__time__"]] <- parse_time_col(NULL, "in_date", df[[date_col]])
+            time_col <- "__time__"
+          }
+        } else if (time_col %in% colnames(df)) {
+          df[[time_col]] <- parse_time_col(df[[time_col]], time_fmt)
+        }
       }
       
       list(
@@ -246,9 +376,43 @@ setupServer <- function(id, active_config) {
         audio_mode     = audio_mode,
         folder_pattern = folder_pattern,
         path_col       = path_col,
-        use_datetime   = use_datetime
+        use_datetime   = use_datetime,
+        date_format    = date_fmt,
+        time_format    = time_fmt
       )
     }
+    
+    # ── Date / time column previews ───────────────────────────────────────────
+    preview_val <- function(col) {
+      df <- raw_df()
+      if (is.null(df) || !col %in% colnames(df)) return(NULL)
+      vals <- df[[col]]
+      # Use 3rd row, fallback to first non-NA
+      v <- if (length(vals) >= 3) vals[3] else vals[which(!is.na(vals))[1]]
+      if (is.null(v) || is.na(v)) return(NULL)
+      as.character(v)
+    }
+    
+    preview_ui <- function(val) {
+      if (is.null(val)) return(NULL)
+      div(style = "font-size: 10px; color: var(--text-faint,#aaa);
+                   margin-top: 3px; font-family: monospace;
+                   white-space: nowrap; overflow: hidden;
+                   text-overflow: ellipsis;",
+          paste0("Preview:“", val, "”"))
+    }
+    
+    output$date_preview <- renderUI({
+      col <- input$date_col
+      if (is.null(col) || nchar(col) == 0) return(NULL)
+      preview_ui(preview_val(col))
+    })
+    
+    output$time_preview <- renderUI({
+      col <- input$time_col
+      if (is.null(col) || nchar(col) == 0) return(NULL)
+      preview_ui(preview_val(col))
+    })
     
     # ── Read use_datetime safely ───────────────────────────────────────────────
     get_use_datetime <- function() {
@@ -287,6 +451,8 @@ setupServer <- function(id, active_config) {
         audio_path_mode  = input$audio_path_mode,
         folder_structure = input$folder_structure,
         use_datetime     = use_dt,
+        date_format      = input$date_format %||% "YYYYMMDD",
+        time_format      = input$time_format %||% "HHMMSS",
         palettes         = palette_config()
       ))
       
@@ -304,7 +470,11 @@ setupServer <- function(id, active_config) {
         audio_mode     = input$audio_path_mode,
         folder_pattern = input$folder_structure,
         path_col       = input$path_col,
-        use_datetime   = use_dt
+        use_datetime   = use_dt,
+        date_fmt       = input$date_format %||% "YYYYMMDD",
+        time_fmt       = if (!is.null(input$date_format) &&
+                             input$date_format == "datetime") "in_date"
+        else input$time_format %||% "HHMMSS"
       ))
     })
     
@@ -336,7 +506,11 @@ setupServer <- function(id, active_config) {
         audio_mode     = cfg$audio_path_mode  %||% "folder_structure",
         folder_pattern = cfg$folder_structure %||% "{Site}/{Device}/{Date}",
         path_col       = cfg$filename_column,
-        use_datetime   = use_dt
+        use_datetime   = use_dt,
+        date_fmt       = cfg$date_format %||% "YYYYMMDD",
+        time_fmt       = if (!is.null(cfg$date_format) &&
+                             cfg$date_format == "datetime") "in_date"
+        else cfg$time_format %||% "HHMMSS"
       ))
     })
     
@@ -373,14 +547,22 @@ setupServer <- function(id, active_config) {
         sample_idx <- sample(seq_len(nrow(df)), n_check)
         sample_df  <- df[sample_idx, ]
         
+        audio_exts <- c(".wav", ".WAV", ".mp3", ".MP3",
+                        ".flac", ".FLAC", ".ogg", ".OGG",
+                        ".aif", ".aiff", ".AIFF")
+        
         paths <- mapply(function(i) {
           p <- pattern
           for (tok in tokens)
             p <- gsub(paste0("\\{", tok, "\\}"),
                       as.character(sample_df[[tok]][i]), p)
-          file.path(audio_root, p,
-                    paste0(trimws(as.character(
-                      sample_df[[input$filename_col]][i])), ".wav"))
+          fn_raw  <- trimws(as.character(sample_df[[input$filename_col]][i]))
+          fn_base <- tools::file_path_sans_ext(fn_raw)
+          for (ext in audio_exts) {
+            candidate <- file.path(audio_root, p, paste0(fn_base, ext))
+            if (file.exists(candidate)) return(candidate)
+          }
+          file.path(audio_root, p, fn_raw)
         }, seq_len(n_check))
         
       } else {
