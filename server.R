@@ -18,6 +18,7 @@ function(input, output, session) {
   setup_out         <- setupServer("setup", active_config)
   app_data          <- setup_out$app_data
   reactive_palettes <- setup_out$reactive_palettes
+  use_datetime_live <- setup_out$use_datetime
   
   # ── Flat cache ────────────────────────────────────────────────────────────────
   cache_df             <- reactiveVal(NULL)
@@ -33,6 +34,13 @@ function(input, output, session) {
   cache_time_col       <- reactiveVal("Time")
   cache_date_range     <- reactiveVal(NULL)
   cache_applied        <- reactiveVal(FALSE)
+  # Live — responds immediately to checkbox, no Apply needed
+  cache_use_datetime <- reactive({
+    fn <- use_datetime_live
+    if (is.null(fn)) return(TRUE)
+    val <- fn()
+    if (is.null(val)) TRUE else as.logical(val)
+  })
   
   observeEvent(app_data(), {
     ad <- app_data()
@@ -134,6 +142,29 @@ function(input, output, session) {
   })
   outputOptions(output, "analysis_lock_msg", suspendWhenHidden = FALSE)
   
+  # ── Push use_datetime to client for conditionalPanel ─────────────────────────
+  observeEvent(cache_use_datetime(), {
+    shinyjs::runjs(sprintf(
+      "Shiny.setInputValue('server_use_datetime', %s);",
+      tolower(as.character(cache_use_datetime()))
+    ))
+  }, ignoreInit = FALSE)
+  
+  # ── Plot type UI — exclude diel when no datetime ─────────────────────────────
+  output$plot_type_ui <- renderUI({
+    use_dt  <- cache_use_datetime()
+    choices <- if (use_dt)
+      c("Scatter 3D", "Scatter 2D", "Diel Line 2D", "Diel Line 3D",
+        "Boxplot", "Index Correlation")
+    else
+      c("Scatter 3D", "Scatter 2D", "Boxplot", "Index Correlation")
+    cur <- isolate(input$plot_type)
+    sel <- if (!is.null(cur) && cur %in% choices) cur else choices[1]
+    selectInput("plot_type", label = NULL,
+                choices = choices, selected = sel, width = "100%")
+  })
+  outputOptions(output, "plot_type_ui", suspendWhenHidden = FALSE)
+  
   # ── Diel bin label ────────────────────────────────────────────────────────────
   output$diel_bin_label <- renderUI({
     req(input$diel_bin_mins)
@@ -155,6 +186,7 @@ function(input, output, session) {
   
   # ── Helpers ───────────────────────────────────────────────────────────────────
   apply_time_filter <- function(df, range_mins) {
+    if (!cache_use_datetime()) return(df)
     time_col <- cache_time_col()
     if (!time_col %in% colnames(df)) return(df)
     if (is.null(range_mins) || length(range_mins) < 2) return(df)
@@ -170,6 +202,7 @@ function(input, output, session) {
   }
   
   apply_date_filter <- function(df, from_input, to_input) {
+    if (!cache_use_datetime()) return(df)
     date_col   <- cache_date_col()
     if (!date_col %in% colnames(df)) return(df)
     date_range <- cache_date_range()
@@ -246,7 +279,9 @@ function(input, output, session) {
   
   # ── Add time bins ─────────────────────────────────────────────────────────────
   add_time_bins <- function(df, time_range, bin_mins = 30) {
+    if (!cache_use_datetime()) return(df)
     time_col <- cache_time_col()
+    if (!time_col %in% colnames(df)) return(df)
     plot_tr  <- if (!is.null(time_range)) time_range else c(0, 1440)
     df       <- apply_time_filter(df, plot_tr)
     df %>%
@@ -275,11 +310,6 @@ function(input, output, session) {
         "</div>"
       )
     })
-    left_col <- paste0(
-      "<div style='font-weight:500; margin-bottom:3px; white-space:nowrap;",
-      " overflow:hidden; text-overflow:ellipsis;'>", basename(url), "</div>",
-      paste(Filter(Negate(is.null), meta_items), collapse = "")
-    )
     
     pc_cols    <- grep("^PC", colnames(row), value = TRUE)
     active_pcs <- unique(c(
@@ -304,13 +334,15 @@ function(input, output, session) {
         })
       } else character(0)
     }
-    right_col <- paste(Filter(Negate(is.null), value_items), collapse = "")
     
     paste0(
-      "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 12px;",
-      " font-size:11px; line-height:1.5;'>",
-      "<div>", left_col, "</div>",
-      "<div>", right_col, "</div>",
+      "<div style='font-weight:500; margin-bottom:3px; white-space:nowrap;",
+      " overflow:hidden; text-overflow:ellipsis;'>Now playing: ",
+      basename(url), "</div>",
+      "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 10px;",
+      " font-size:10px; line-height:1.5;'>",
+      "<div>", paste(Filter(Negate(is.null), meta_items),  collapse = ""), "</div>",
+      "<div>", paste(Filter(Negate(is.null), value_items), collapse = ""), "</div>",
       "</div>"
     )
   }
@@ -493,7 +525,7 @@ function(input, output, session) {
     date_col  <- cache_date_col()
     has_audio <- nchar(cache_audio_root()) > 0
     
-    data$Time_fmt <- if (time_col %in% colnames(data))
+    data$Time_fmt <- if (cache_use_datetime() && time_col %in% colnames(data))
       sprintf("%06d", as.numeric(data[[time_col]])) else ""
     
     plot_tr  <- if (!is.null(input$plot_time_range)) input$plot_time_range
@@ -988,7 +1020,7 @@ function(input, output, session) {
     }
   })
   
-  # ── Open file ─────────────────────────────────────────────────────────────────
+  # ── Open file  ─────────────────────────────────────────────────────────────────
   observeEvent(input$open_file, {
     url  <- current_audio()
     if (is.null(url)) return()

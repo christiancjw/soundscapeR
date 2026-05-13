@@ -62,7 +62,7 @@ paletteServer <- function(id, active_config, app_data) {
         if (length(p$custom_colours) > 0)
           customs[[col]] <- unlist(p$custom_colours)
         if (length(p$level_order) > 0)
-          orders[[col]] <- unlist(p$level_order)
+          orders[[col]] <- unname(unlist(p$level_order))
       }
       reactive_palettes(parsed)
       saved_custom(customs)
@@ -265,7 +265,7 @@ paletteServer <- function(id, active_config, app_data) {
             div(style = "display:flex; justify-content:space-between;
                        align-items:center; margin-bottom:5px;",
                 span(style = "font-size:11px; color:#888;",
-                     "2. Recolour and reorder levels"),
+                     "2. Fine-tune and reorder levels"),
                 span(style = "font-size:10px; color:#bbb; font-style:italic;",
                      "drag rows to reorder")
             ),
@@ -369,7 +369,7 @@ paletteServer <- function(id, active_config, app_data) {
       req(input$save_palette)
       col         <- input$save_palette$col
       colours     <- unlist(input$save_palette$colours)
-      level_order <- unlist(input$save_palette$level_order)
+      level_order <- unname(unlist(input$save_palette$level_order))
       is_custom   <- isTRUE(input$save_palette$is_custom)
       req(col, length(colours) > 0)
       
@@ -396,6 +396,13 @@ paletteServer <- function(id, active_config, app_data) {
     })
     
     # ── Write to config ──────────────────────────────────────────────────────
+    # Forces serialisation as JSON array — prevents auto_unbox collapsing
+    # single-element vectors to scalars, and named lists to objects
+    as_json_array <- function(x) {
+      if (is.null(x) || length(x) == 0) return(list())
+      I(unname(as.character(x)))
+    }
+    
     save_palettes_to_config <- function(pals, customs, orders, cfg) {
       req(cfg)
       proj_dir <- file.path(PROJECTS_ROOT, cfg$project_name)
@@ -407,8 +414,7 @@ paletteServer <- function(id, active_config, app_data) {
             as.list(pals[[col]]) else list(),
           custom_colours = if (!is.null(customs[[col]]))
             as.list(customs[[col]]) else list(),
-          level_order    = if (!is.null(orders[[col]]))
-            as.list(orders[[col]]) else list()
+          level_order    = as_json_array(orders[[col]])
         )
       }), all_cols)
       cfg_current          <- read_config(proj_dir)
@@ -416,6 +422,29 @@ paletteServer <- function(id, active_config, app_data) {
       write_config(proj_dir, cfg_current)
     }
     
-    return(reactive_palettes)
+    # Build a reactive that returns the full palette config list —
+    # same structure as cfg$palettes — so setup can write it on save_config
+    current_palette_config <- reactive({
+      pals    <- reactive_palettes()
+      customs <- saved_custom()
+      orders  <- saved_order()
+      all_cols <- unique(c(names(pals), names(customs), names(orders)))
+      if (length(all_cols) == 0) return(list())
+      setNames(lapply(all_cols, function(col) {
+        list(
+          active         = !is.null(pals[[col]]),
+          colours        = if (!is.null(pals[[col]]))
+            as.list(pals[[col]]) else list(),
+          custom_colours = if (!is.null(customs[[col]]))
+            as.list(customs[[col]]) else list(),
+          level_order    = as_json_array(orders[[col]])
+        )
+      }), all_cols)
+    })
+    
+    return(list(
+      palettes       = reactive_palettes,
+      palette_config = current_palette_config
+    ))
   })
 }

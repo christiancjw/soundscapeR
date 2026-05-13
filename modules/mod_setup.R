@@ -39,18 +39,34 @@ setupServer <- function(id, active_config) {
         div(class = "setup-card",
             div(class = "setup-card-title", "Step 1 — Map your columns"),
             
-            fluidRow(
-              column(6,
-                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                         "Date column"),
-                     selectInput(ns("date_col"), label = NULL,
-                                 choices = NULL, multiple = FALSE, width = "100%")
-              ),
-              column(6,
-                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                         "Time column"),
-                     selectInput(ns("time_col"), label = NULL,
-                                 choices = NULL, multiple = FALSE, width = "100%")
+            # ── Date & time toggle ───────────────────────────────────────────
+            div(style = "display:flex; align-items:center; gap:6px;
+                         margin-bottom:10px;",
+                tags$input(type = "checkbox", id = ns("use_datetime"),
+                           checked = "checked",
+                           style   = "accent-color:#1a56db; cursor:pointer;
+                                    width:13px; height:13px;"),
+                tags$label(`for` = ns("use_datetime"),
+                           style = "font-size:11px; color:#555;
+                                  cursor:pointer; margin:0; user-select:none;",
+                           "Use date & time data")
+            ),
+            
+            conditionalPanel(
+              condition = paste0("input['", ns("use_datetime"), "']"),
+              fluidRow(
+                column(6,
+                       div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
+                           "Date column"),
+                       selectInput(ns("date_col"), label = NULL,
+                                   choices = NULL, multiple = FALSE, width = "100%")
+                ),
+                column(6,
+                       div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
+                           "Time column"),
+                       selectInput(ns("time_col"), label = NULL,
+                                   choices = NULL, multiple = FALSE, width = "100%")
+                )
               )
             ),
             
@@ -196,16 +212,30 @@ setupServer <- function(id, active_config) {
       if (!is.null(cfg$folder_structure) && cfg$folder_structure != "")
         updateTextInput(session, "folder_structure",
                         value = cfg$folder_structure)
+      
+      # Restore use_datetime from config (default TRUE)
+      use_dt <- if (!is.null(cfg$use_datetime)) cfg$use_datetime else TRUE
+      shinyjs::runjs(sprintf(
+        "document.getElementById('%s').checked = %s;
+         Shiny.setInputValue('%s', %s);",
+        ns("use_datetime"),
+        tolower(as.character(use_dt)),
+        ns("use_datetime"),
+        tolower(as.character(use_dt))
+      ))
     })
     
     # ── Helper: package output ─────────────────────────────────────────────────
     package_output <- function(df, cfg, index_cols, meta_cols,
                                fn_col, date_col, time_col, audio_root,
-                               audio_mode, folder_pattern, path_col) {
-      if (date_col %in% colnames(df))
-        df[[date_col]] <- as.integer(df[[date_col]])
-      if (time_col %in% colnames(df))
-        df[[time_col]] <- as.numeric(df[[time_col]])
+                               audio_mode, folder_pattern, path_col,
+                               use_datetime) {
+      if (use_datetime) {
+        if (date_col %in% colnames(df))
+          df[[date_col]] <- as.integer(df[[date_col]])
+        if (time_col %in% colnames(df))
+          df[[time_col]] <- as.numeric(df[[time_col]])
+      }
       
       list(
         df             = df,
@@ -213,13 +243,20 @@ setupServer <- function(id, active_config) {
         index_cols     = index_cols,
         meta_cols      = meta_cols,
         filename_col   = fn_col,
-        date_col       = date_col,
-        time_col       = time_col,
+        date_col       = if (use_datetime) date_col else "",
+        time_col       = if (use_datetime) time_col else "",
         audio_root     = audio_root,
         audio_mode     = audio_mode,
         folder_pattern = folder_pattern,
-        path_col       = path_col
+        path_col       = path_col,
+        use_datetime   = use_datetime
       )
+    }
+    
+    # ── Read use_datetime safely ───────────────────────────────────────────────
+    get_use_datetime <- function() {
+      val <- input$use_datetime
+      if (is.null(val)) TRUE else as.logical(val)
     }
     
     # ── Manual Apply ───────────────────────────────────────────────────────────
@@ -227,6 +264,8 @@ setupServer <- function(id, active_config) {
       df  <- raw_df()
       cfg <- active_config()
       req(df, cfg)
+      
+      use_dt <- get_use_datetime()
       
       showNotification("Applying...", id = "apply_msg", duration = NULL)
       removeNotification("apply_msg")
@@ -238,12 +277,13 @@ setupServer <- function(id, active_config) {
         index_cols     = input$index_cols,
         meta_cols      = input$meta_cols,
         fn_col         = input$filename_col,
-        date_col       = input$date_col,
-        time_col       = input$time_col,
+        date_col       = input$date_col   %||% "Date",
+        time_col       = input$time_col   %||% "Time",
         audio_root     = trimws(input$audio_root),
         audio_mode     = input$audio_path_mode,
         folder_pattern = input$folder_structure,
-        path_col       = input$path_col
+        path_col       = input$path_col,
+        use_datetime   = use_dt
       ))
     })
     
@@ -257,6 +297,8 @@ setupServer <- function(id, active_config) {
         nchar(cfg$filename_column) > 0
       if (!has_cols) return()
       
+      use_dt <- if (!is.null(cfg$use_datetime)) cfg$use_datetime else TRUE
+      
       showNotification("Loading previous settings...",
                        id = "auto_apply_msg", duration = NULL)
       removeNotification("auto_apply_msg")
@@ -267,12 +309,13 @@ setupServer <- function(id, active_config) {
         index_cols     = unlist(cfg$index_columns),
         meta_cols      = unlist(cfg$metadata_columns),
         fn_col         = cfg$filename_column,
-        date_col       = cfg$date_column %||% "Date",
-        time_col       = cfg$time_column %||% "Time",
+        date_col       = cfg$date_column      %||% "Date",
+        time_col       = cfg$time_column      %||% "Time",
         audio_root     = trimws(cfg$audio_root %||% ""),
-        audio_mode     = cfg$audio_path_mode %||% "folder_structure",
+        audio_mode     = cfg$audio_path_mode  %||% "folder_structure",
         folder_pattern = cfg$folder_structure %||% "{Site}/{Device}/{Date}",
-        path_col       = cfg$filename_column
+        path_col       = cfg$filename_column,
+        use_datetime   = use_dt
       ))
     })
     
@@ -375,17 +418,27 @@ setupServer <- function(id, active_config) {
         audio_root       = input$audio_root,
         audio_path_mode  = input$audio_path_mode,
         folder_structure = input$folder_structure,
-        palettes         = cfg$palettes
+        use_datetime     = get_use_datetime(),
+        palettes         = palette_config()
       ))
       showNotification("Config saved.", type = "message", duration = 3)
     })
     
     # ── Palette module ─────────────────────────────────────────────────────────
-    reactive_palettes <- paletteServer("palette", active_config, output_data)
+    palette_out       <- paletteServer("palette", active_config, output_data)
+    reactive_palettes <- palette_out$palettes
+    palette_config    <- palette_out$palette_config
+    
+    # Live reactive — updates immediately when checkbox changes, no Apply needed
+    use_datetime_r <- reactive({
+      val <- input$use_datetime
+      if (is.null(val)) TRUE else as.logical(val)
+    })
     
     return(list(
       app_data          = output_data,
-      reactive_palettes = reactive_palettes
+      reactive_palettes = reactive_palettes,
+      use_datetime      = use_datetime_r
     ))
   })
 }

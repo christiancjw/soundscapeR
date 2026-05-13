@@ -61,13 +61,7 @@ function resizePlotly() {
 function resizeSpectrogram() {
   var el = document.getElementById('spectrogram');
   if (!el) return;
-  var newH = el.clientHeight;
-  if (newH < 10) return;
-  var canvas = el.querySelector('canvas');
-  if (canvas) {
-    canvas.style.height = newH + 'px';
-    canvas.height       = newH;
-  }
+  // Just let CSS flex handle the height — canvas stretches via object-fit
 }
 
 // ── Compute button state ──────────────────────────────────────────────────────
@@ -537,7 +531,8 @@ $(document).ready(function() {
 
   // ── Non-wavesurfer message handlers (registered immediately) ─────────────────
   Shiny.addCustomMessageHandler('update_now_playing', function(msg) {
-    document.getElementById('now_playing_text').innerHTML = msg.info;
+    var el = document.getElementById('now_playing_text');
+    if (el) el.innerHTML = msg.info;
     var controls = document.getElementById('now_playing_controls');
     if (controls) controls.style.display = 'flex';
   });
@@ -551,6 +546,21 @@ $(document).ready(function() {
 
   // ── WaveSurfer — delayed so container has real dimensions ────────────────────
   setTimeout(function() {
+
+    // Measure spectrogram container height by briefly making it visible
+    var spectroEl   = document.getElementById('spectrogram');
+    var analysisEl  = document.getElementById('main_analysis');
+    var wasHidden   = analysisEl && analysisEl.style.display === 'none';
+    if (wasHidden) {
+      analysisEl.style.visibility = 'hidden';
+      analysisEl.style.display    = 'flex';
+    }
+    applyLayout();
+    var spectroH = spectroEl ? Math.max(150, spectroEl.clientHeight) : 300;
+    if (wasHidden) {
+      analysisEl.style.display    = 'none';
+      analysisEl.style.visibility = '';
+    }
 
     var wavesurfer = WaveSurfer.create({
       container:     '#waveform',
@@ -566,10 +576,11 @@ $(document).ready(function() {
           fftSamples:   512,
           labels:       true,
           frequencyMax: 22050,
-          height:       200
+          height:       spectroH
         })
       ]
     });
+    window._wavesurfer = wavesurfer;
 
     var isPlaying = false;
 
@@ -617,8 +628,9 @@ $(document).ready(function() {
       if (gainNode) return;
       try {
         // WaveSurfer v7 exposes .media, older versions use getMediaElement()
-        var media = wavesurfer.media
-          || (wavesurfer.getMediaElement ? wavesurfer.getMediaElement() : null);
+        var ws    = window._wavesurfer || wavesurfer;
+        var media = ws.media
+          || (ws.getMediaElement ? ws.getMediaElement() : null);
         if (!media) { console.warn('No media element found'); return; }
 
         var audioCtx = new (window.AudioContext || window.webkitAudioContext)();

@@ -295,6 +295,31 @@ fluidPage(
         overflow: hidden;
       }
 
+      /* audio linked indicator */
+      #audio_linked_row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-top: 0.5px solid #e0e0dc;
+        background: #f7f7f5;
+      }
+
+      #audio_linked_dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #22c55e;
+        flex-shrink: 0;
+      }
+
+      #audio_linked_label {
+        font-size: 9px;
+        color: #aaa;
+        letter-spacing: 0.05em;
+        user-select: none;
+      }
+
       /* left sub-column: play/pause on top, open-file on bottom */
       #now_playing_btn_col {
         display: flex;
@@ -333,8 +358,8 @@ fluidPage(
 
       #waveform {
         width: 100%;
-        flex: 1;
-        min-height: 60px;
+        height: 90px;
+        flex-shrink: 0;
         border: 0.5px solid #e0e0dc;
         border-radius: 6px;
         overflow: hidden;
@@ -342,13 +367,15 @@ fluidPage(
 
       #spectrogram {
         width: 100%;
-        flex: 2;
-        min-height: 80px;
+        flex: 1;
+        min-height: 0;
         border: 0.5px solid #e0e0dc;
         border-radius: 6px;
         overflow: hidden;
         margin-top: 6px;
       }
+
+
 
       .sidebar-tabs {
         display: flex;
@@ -656,6 +683,11 @@ fluidPage(
                       onclick = "if(!this.classList.contains('disabled-tab')) switchTab('analysis')")
               ),
               
+              div(id = "audio_linked_row",
+                  div(id = "audio_linked_dot"),
+                  div(id = "audio_linked_label", "audio linked")
+              ),
+              
               div(id = "panel_setup",
                   projectUI("project")
               ),
@@ -677,11 +709,7 @@ fluidPage(
                   
                   # ── Plot type ─────────────────────────────────────────────────────
                   span(class = "s-label", "Plot type"),
-                  selectInput("plot_type", label = NULL,
-                              choices = c("Scatter 3D", "Scatter 2D",
-                                          "Diel Line 2D", "Diel Line 3D",
-                                          "Boxplot", "Index Correlation"),
-                              selected = "Scatter 3D", width = "100%"),
+                  uiOutput("plot_type_ui"),
                   
                   # ── PCA axes ──────────────────────────────────────────────────────
                   conditionalPanel(
@@ -747,19 +775,21 @@ fluidPage(
                   # ── Dataframe selection ───────────────────────────────────────────
                   span(class = "section-divider", "Dataframe selection"),
                   
-                  span(class = "s-label", "Date range"),
-                  div(class = "date-range-row",
-                      dateInput("date_from", label = "From",
-                                value = Sys.Date() - 365, width = "100%"),
-                      dateInput("date_to", label = "To",
-                                value = Sys.Date(), width = "100%")
+                  conditionalPanel(
+                    condition = "input.server_use_datetime",
+                    span(class = "s-label", "Date range"),
+                    div(class = "date-range-row",
+                        dateInput("date_from", label = "From",
+                                  value = Sys.Date() - 365, width = "100%"),
+                        dateInput("date_to", label = "To",
+                                  value = Sys.Date(), width = "100%")
+                    ),
+                    span(class = "s-label", "Time range"),
+                    sliderInput("time_range", label = NULL,
+                                min = 0, max = 1440, value = c(0, 1440),
+                                step = 15, ticks = FALSE, width = "100%"),
+                    uiOutput("time_range_label")
                   ),
-                  
-                  span(class = "s-label", "Time range"),
-                  sliderInput("time_range", label = NULL,
-                              min = 0, max = 1440, value = c(0, 1440),
-                              step = 15, ticks = FALSE, width = "100%"),
-                  uiOutput("time_range_label"),
                   
                   span(class = "s-label", "Metadata filters"),
                   div(id = "analysis_filters_container"),
@@ -767,19 +797,21 @@ fluidPage(
                   # ── Plotting selection ────────────────────────────────────────────
                   span(class = "section-divider", "Plotting selection"),
                   
-                  span(class = "s-label", "Date range"),
-                  div(class = "date-range-row",
-                      dateInput("plot_date_from", label = "From",
-                                value = Sys.Date() - 365, width = "100%"),
-                      dateInput("plot_date_to", label = "To",
-                                value = Sys.Date(), width = "100%")
+                  conditionalPanel(
+                    condition = "input.server_use_datetime",
+                    span(class = "s-label", "Date range"),
+                    div(class = "date-range-row",
+                        dateInput("plot_date_from", label = "From",
+                                  value = Sys.Date() - 365, width = "100%"),
+                        dateInput("plot_date_to", label = "To",
+                                  value = Sys.Date(), width = "100%")
+                    ),
+                    span(class = "s-label", "Time range"),
+                    sliderInput("plot_time_range", label = NULL,
+                                min = 0, max = 1440, value = c(0, 1440),
+                                step = 15, ticks = FALSE, width = "100%"),
+                    uiOutput("plot_time_range_label")
                   ),
-                  
-                  span(class = "s-label", "Time range"),
-                  sliderInput("plot_time_range", label = NULL,
-                              min = 0, max = 1440, value = c(0, 1440),
-                              step = 15, ticks = FALSE, width = "100%"),
-                  uiOutput("plot_time_range_label"),
                   
                   span(class = "s-label", "Metadata filters"),
                   div(id = "plot_filters_container")
@@ -839,7 +871,7 @@ fluidPage(
                           # Right: controls — button column + volume column
                           div(id = "now_playing_controls",
                               
-                              # Left col: play/pause top, open-file bottom
+                              # Button col: play/pause top, open-file bottom
                               div(id = "now_playing_btn_col",
                                   tags$button(
                                     id = "play_pause_btn", class = "vol-btn",
