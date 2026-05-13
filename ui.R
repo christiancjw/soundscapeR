@@ -4,6 +4,15 @@ fluidPage(
   tags$head(
     tags$script(src = "js/wavesurfer.min.js"),
     tags$script(src = "js/spectrogram.min.js"),
+    tags$script(HTML("
+      function toggleSection(headerId, bodyId) {
+        var header = document.getElementById(headerId);
+        var body   = document.getElementById(bodyId);
+        if (!header || !body) return;
+        var collapsed = body.classList.toggle('collapsed');
+        header.classList.toggle('collapsed', collapsed);
+      }
+    ")),
     tags$style(HTML("
 
       /* ── CSS variables — light theme — purple accents ───────────────────── */
@@ -135,7 +144,7 @@ fluidPage(
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        padding: 12px;
+        padding: 8px 0 0 0;
         gap: 0;
         height: 100vh;
       }
@@ -496,7 +505,35 @@ fluidPage(
         margin-bottom: 4px;
         padding-bottom: 3px;
         border-bottom: 0.5px solid var(--border-accent);
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .section-divider:hover { opacity: 0.75; }
+
+      .section-divider .collapse-arrow {
+        font-size: 10px;
+        transition: transform 0.2s;
+        flex-shrink: 0;
+      }
+
+      .section-divider.collapsed .collapse-arrow {
+        transform: rotate(-90deg);
+      }
+
+      .collapsible-section {
+        overflow: hidden;
+        transition: max-height 0.25s ease, opacity 0.2s ease;
+        max-height: 2000px;
+        opacity: 1;
+      }
+
+      .collapsible-section.collapsed {
+        max-height: 0 !important;
+        opacity: 0;
       }
 
       .s-label {
@@ -896,48 +933,60 @@ fluidPage(
                   actionButton("compute", "Compute", class = "btn-compute"),
                   
                   # ── Dataframe selection ───────────────────────────────────────────
-                  span(class = "section-divider", "Dataframe selection"),
-                  
-                  conditionalPanel(
-                    condition = "input.server_use_datetime",
-                    span(class = "s-label", "Date range"),
-                    div(class = "date-range-row",
-                        dateInput("date_from", label = "From",
-                                  value = Sys.Date() - 365, width = "100%"),
-                        dateInput("date_to", label = "To",
-                                  value = Sys.Date(), width = "100%")
-                    ),
-                    span(class = "s-label", "Time range"),
-                    sliderInput("time_range", label = NULL,
-                                min = 0, max = 1440, value = c(0, 1440),
-                                step = 15, ticks = FALSE, width = "100%"),
-                    uiOutput("time_range_label")
+                  tags$div(class = "section-divider", id = "df_header",
+                           onclick = "toggleSection('df_header','df_body')",
+                           "Dataframe selection",
+                           span(class = "collapse-arrow", "▾")
                   ),
-                  
-                  span(class = "s-label", "Metadata filters"),
-                  div(id = "analysis_filters_container"),
+                  div(id = "df_body", class = "collapsible-section",
+                      
+                      conditionalPanel(
+                        condition = "input.server_use_datetime",
+                        span(class = "s-label", "Date range"),
+                        div(class = "date-range-row",
+                            dateInput("date_from", label = "From",
+                                      value = Sys.Date() - 365, width = "100%"),
+                            dateInput("date_to", label = "To",
+                                      value = Sys.Date(), width = "100%")
+                        ),
+                        span(class = "s-label", "Time range"),
+                        sliderInput("time_range", label = NULL,
+                                    min = 0, max = 1440, value = c(0, 1440),
+                                    step = 15, ticks = FALSE, width = "100%"),
+                        uiOutput("time_range_label")
+                      ),
+                      
+                      span(class = "s-label", "Metadata filters"),
+                      div(id = "analysis_filters_container")
+                  ),
                   
                   # ── Plotting selection ────────────────────────────────────────────
-                  span(class = "section-divider", "Plotting selection"),
-                  
-                  conditionalPanel(
-                    condition = "input.server_use_datetime",
-                    span(class = "s-label", "Date range"),
-                    div(class = "date-range-row",
-                        dateInput("plot_date_from", label = "From",
-                                  value = Sys.Date() - 365, width = "100%"),
-                        dateInput("plot_date_to", label = "To",
-                                  value = Sys.Date(), width = "100%")
-                    ),
-                    span(class = "s-label", "Time range"),
-                    sliderInput("plot_time_range", label = NULL,
-                                min = 0, max = 1440, value = c(0, 1440),
-                                step = 15, ticks = FALSE, width = "100%"),
-                    uiOutput("plot_time_range_label")
+                  tags$div(class = "section-divider", id = "plot_header",
+                           onclick = "toggleSection('plot_header','plot_body')",
+                           "Plotting selection",
+                           span(class = "collapse-arrow", "▾")
                   ),
-                  
-                  span(class = "s-label", "Metadata filters"),
-                  div(id = "plot_filters_container")
+                  div(id = "plot_body", class = "collapsible-section",
+                      
+                      conditionalPanel(
+                        condition = "input.server_use_datetime",
+                        span(class = "s-label", "Date range"),
+                        div(class = "date-range-row",
+                            dateInput("plot_date_from", label = "From",
+                                      value = Sys.Date() - 365, width = "100%"),
+                            dateInput("plot_date_to", label = "To",
+                                      value = Sys.Date(), width = "100%")
+                        ),
+                        span(class = "s-label", "Time range"),
+                        sliderInput("plot_time_range", label = NULL,
+                                    min = 0, max = 1440, value = c(0, 1440),
+                                    step = 15, ticks = FALSE, width = "100%"),
+                        uiOutput("plot_time_range_label")
+                      ),
+                      
+                      span(class = "s-label", "Metadata filters"),
+                      div(id = "plot_filters_container")
+                  )
               )
           )
       ),

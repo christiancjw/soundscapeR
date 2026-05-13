@@ -48,7 +48,7 @@ function(input, output, session) {
         ),
         legend        = list(bgcolor = "rgba(17,17,19,0.92)", borderwidth = 0,
                              font = list(size = 10, color = "#f0f0f0"),
-                             x = 1, y = 1, xanchor = "right", yanchor = "top",
+                             x = 1, y = 0.92, xanchor = "right", yanchor = "top",
                              traceorder = "normal", itemsizing = "constant")
       )
     } else {
@@ -84,7 +84,7 @@ function(input, output, session) {
         ),
         legend        = list(bgcolor = "rgba(255,255,255,0.9)", borderwidth = 0,
                              font = list(size = 10, color = "#1a1a1a"),
-                             x = 1, y = 1, xanchor = "right", yanchor = "top",
+                             x = 1, y = 0.92, xanchor = "right", yanchor = "top",
                              traceorder = "normal", itemsizing = "constant")
       )
     }
@@ -349,10 +349,34 @@ function(input, output, session) {
   output$diel_bin_label <- renderUI({
     req(input$diel_bin_mins)
     div(paste0(input$diel_bin_mins, " min bins"),
-        style = "font-size:10px; color:#888; text-align:center;
+        style = "font-size:10px; color:var(--text-faint,#888); text-align:center;
                  margin-top:-6px; margin-bottom:4px;")
   })
   outputOptions(output, "diel_bin_label", suspendWhenHidden = FALSE)
+  
+  # ── Time range labels ────────────────────────────────────────────────────────
+  fmt_time_label <- function(mins) {
+    if (is.null(mins) || length(mins) < 2 || anyNA(mins)) return(NULL)
+    paste0(
+      minutes_to_label(mins[1]), " – ", minutes_to_label(mins[2])
+    )
+  }
+  
+  output$time_range_label <- renderUI({
+    lbl <- fmt_time_label(input$time_range)
+    if (is.null(lbl)) return(NULL)
+    div(lbl, style = "font-size:10px; color:var(--text-faint,#888);
+                      text-align:center; margin-top:-6px; margin-bottom:4px;")
+  })
+  outputOptions(output, "time_range_label", suspendWhenHidden = FALSE)
+  
+  output$plot_time_range_label <- renderUI({
+    lbl <- fmt_time_label(input$plot_time_range)
+    if (is.null(lbl)) return(NULL)
+    div(lbl, style = "font-size:10px; color:var(--text-faint,#888);
+                      text-align:center; margin-top:-6px; margin-bottom:4px;")
+  })
+  outputOptions(output, "plot_time_range_label", suspendWhenHidden = FALSE)
   
   # ── Select all / none for indices ─────────────────────────────────────────────
   observeEvent(input$indices_select_all, {
@@ -549,12 +573,16 @@ function(input, output, session) {
   # ── Palette helper ────────────────────────────────────────────────────────────
   get_palette <- function(df, colvar, custom_palettes = NULL,
                           palette_order = NULL) {
+    # Only include values actually present in this data slice
     vals <- unique(as.character(df[[colvar]]))
+    vals <- vals[!is.na(vals)]
+    if (length(vals) == 0) return(c("(none)" = "#4DBBD5"))
     
     if (!is.null(palette_order) && !is.null(palette_order[[colvar]])) {
       raw <- palette_order[[colvar]]
       ord <- if (is.list(raw) && !is.null(raw$level_order))
         unlist(raw$level_order) else unlist(raw)
+      # Only reorder by values present in this slice
       if (length(ord) > 0)
         vals <- c(ord[ord %in% vals], setdiff(vals, ord))
     }
