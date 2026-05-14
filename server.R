@@ -264,14 +264,29 @@ function(input, output, session) {
     ))
   }, ignoreInit = FALSE)
   
-  # ── Plot type UI — exclude diel when no datetime ─────────────────────────────
+  # ── Plot type UI — restricted by n indices and datetime availability ───────────
   output$plot_type_ui <- renderUI({
-    use_dt  <- cache_use_datetime()
-    choices <- if (use_dt)
-      c("Scatter 3D", "Scatter 2D", "Diel Line 2D", "Diel Line 3D",
-        "Boxplot", "Index Correlation")
-    else
-      c("Scatter 3D", "Scatter 2D", "Boxplot", "Index Correlation")
+    use_dt <- cache_use_datetime()
+    n      <- length(input$selected_indices)
+    
+    # Build allowed choices based on index count and datetime availability
+    choices <- if (n == 1) {
+      # 1 index: boxplot and diel 2D only
+      if (use_dt) c("Boxplot", "Diel Line 2D")
+      else        c("Boxplot")
+      
+    } else if (n == 2) {
+      # 2 indices: adds scatter 2D, index correlation
+      if (use_dt) c("Scatter 2D", "Diel Line 2D", "Boxplot", "Index Correlation")
+      else        c("Scatter 2D", "Boxplot", "Index Correlation")
+      
+    } else {
+      # 3+ indices: all plots available
+      if (use_dt) c("Scatter 3D", "Scatter 2D", "Diel Line 2D", "Diel Line 3D",
+                    "Boxplot", "Index Correlation")
+      else        c("Scatter 3D", "Scatter 2D", "Boxplot", "Index Correlation")
+    }
+    
     cur <- isolate(input$plot_type)
     sel <- if (!is.null(cur) && cur %in% choices) cur else choices[1]
     selectInput("plot_type", label = NULL,
@@ -281,61 +296,73 @@ function(input, output, session) {
   
   # ── PCA axes UI ───────────────────────────────────────────────────────────────
   output$pca_axes_ui <- renderUI({
-    pt <- input$plot_type
+    pt   <- input$plot_type
     if (is.null(pt)) pt <- "Scatter 3D"
+    inds <- input$selected_indices
+    n    <- length(inds)
     
-    pc_choices <- paste0("PC", 1:10)
-    x_sel <- if (!is.null(input$pca_x)) input$pca_x else "PC1"
-    y_sel <- if (!is.null(input$pca_y)) input$pca_y else "PC2"
-    z_sel <- if (!is.null(input$pca_z)) input$pca_z else "PC3"
+    # When n<=3: axes are the actual indices. When n>3: axes are PC scores.
+    use_pca    <- n > 3
+    ax_choices <- if (use_pca) paste0("PC", 1:10) else if (n > 0) inds else "—"
+    ax_label   <- if (use_pca) "PCA axes" else "Index axes"
+    ax_label1  <- if (use_pca) "PC axis"  else "Index axis"
+    
+    # Default selections — first three indices or first three PCs
+    x_def <- if (use_pca) "PC1" else if (n >= 1) inds[1] else "—"
+    y_def <- if (use_pca) "PC2" else if (n >= 2) inds[2] else if (n >= 1) inds[1] else "—"
+    z_def <- if (use_pca) "PC3" else if (n >= 3) inds[3] else if (n >= 1) inds[1] else "—"
+    
+    x_sel <- if (!is.null(input$pca_x) && input$pca_x %in% ax_choices) input$pca_x else x_def
+    y_sel <- if (!is.null(input$pca_y) && input$pca_y %in% ax_choices) input$pca_y else y_def
+    z_sel <- if (!is.null(input$pca_z) && input$pca_z %in% ax_choices) input$pca_z else z_def
     
     row_style <- "display:flex; gap:4px;"
     
     if (pt == "Scatter 3D") {
       tagList(
-        span(class = "s-label", "PCA axes"),
+        span(class = "s-label", ax_label),
         div(style = row_style,
             div(style = "flex:1;",
-                selectInput("pca_x", "X", choices = pc_choices,
+                selectInput("pca_x", "X", choices = ax_choices,
                             selected = x_sel, width = "100%")),
             div(style = "flex:1;",
-                selectInput("pca_y", "Y", choices = pc_choices,
+                selectInput("pca_y", "Y", choices = ax_choices,
                             selected = y_sel, width = "100%")),
             div(style = "flex:1;",
-                selectInput("pca_z", "Z", choices = pc_choices,
+                selectInput("pca_z", "Z", choices = ax_choices,
                             selected = z_sel, width = "100%"))
         )
       )
     } else if (pt == "Scatter 2D") {
       tagList(
-        span(class = "s-label", "PCA axes"),
+        span(class = "s-label", ax_label),
         div(style = row_style,
             div(style = "flex:1;",
-                selectInput("pca_x", "X", choices = pc_choices,
+                selectInput("pca_x", "X", choices = ax_choices,
                             selected = x_sel, width = "100%")),
             div(style = "flex:1;",
-                selectInput("pca_y", "Y", choices = pc_choices,
+                selectInput("pca_y", "Y", choices = ax_choices,
                             selected = y_sel, width = "100%"))
         )
       )
     } else if (pt %in% c("Diel Line 2D", "Boxplot")) {
       tagList(
-        span(class = "s-label", "PC axis"),
+        span(class = "s-label", ax_label1),
         div(style = row_style,
             div(style = "flex:1;",
-                selectInput("pca_y", "Y", choices = pc_choices,
+                selectInput("pca_y", "Y", choices = ax_choices,
                             selected = y_sel, width = "100%"))
         )
       )
     } else if (pt == "Diel Line 3D") {
       tagList(
-        span(class = "s-label", "PC axes"),
+        span(class = "s-label", ax_label),
         div(style = row_style,
             div(style = "flex:1;",
-                selectInput("pca_y", "Y", choices = pc_choices,
+                selectInput("pca_y", "Y", choices = ax_choices,
                             selected = y_sel, width = "100%")),
             div(style = "flex:1;",
-                selectInput("pca_z", "Z", choices = pc_choices,
+                selectInput("pca_z", "Z", choices = ax_choices,
                             selected = z_sel, width = "100%"))
         )
       )
@@ -1069,18 +1096,75 @@ function(input, output, session) {
   output$pca_summary <- renderPrint({
     req(bottom_trigger() > 0)
     inds <- isolate(input$selected_indices)
-    if (!is.null(inds) && length(inds) > 3) {
+    n    <- length(inds)
+    
+    if (n > 3) {
+      # ── PCA mode ──────────────────────────────────────────────────────────────
       res <- isolate(full_pca_data())
       if (is.null(res)) return(cat("Computing..."))
-      cat("PCA Summary:\n")
+      cat("PCA Summary\n")
+      cat(strrep("-", 40), "\n")
       print(summary(res$pca)$importance)
-      cat("\nLoadings:\n")
+      cat("\nLoadings\n")
+      cat(strrep("-", 40), "\n")
       print(round(res$pca$rotation, 3))
+      
+    } else if (n > 0) {
+      # ── Direct index mode — stats printed in columns ──────────────────────────
+      df <- isolate(plot_data())
+      if (is.null(df) || nrow(df) == 0) return(cat("No data."))
+      
+      # Collect stats per index
+      stat_names <- c("Mean", "SD", "Median", "Min", "Max", "CV (%)")
+      stats_list <- lapply(inds, function(idx) {
+        if (!idx %in% colnames(df)) return(rep(NA, length(stat_names)))
+        vals <- as.numeric(df[[idx]])
+        vals <- vals[!is.na(vals)]
+        if (length(vals) == 0) return(rep(NA, length(stat_names)))
+        c(
+          round(mean(vals),   4),
+          round(sd(vals),     4),
+          round(median(vals), 4),
+          round(min(vals),    4),
+          round(max(vals),    4),
+          round(100 * sd(vals) / mean(vals), 2)
+        )
+      })
+      
+      # Column widths
+      col_w  <- 14
+      lbl_w  <- 8
+      header <- paste0(formatC("", width = lbl_w),
+                       paste(formatC(inds, width = col_w, flag = "-"), collapse = ""))
+      sep    <- strrep("-", lbl_w + col_w * n)
+      cat(header, "\n", sep, "\n", sep = "")
+      for (i in seq_along(stat_names)) {
+        row <- paste(sapply(stats_list, function(s) {
+          formatC(if (!is.na(s[i])) as.character(s[i]) else "—",
+                  width = col_w, flag = "-")
+        }), collapse = "")
+        cat(formatC(stat_names[i], width = lbl_w, flag = "-"), row, "\n", sep = "")
+      }
+      
+      # Pairwise correlations below if n > 1
+      if (n > 1) {
+        cat("\n", strrep("-", lbl_w + col_w * n), "\n", sep = "")
+        cat("Pairwise Pearson Correlations\n")
+        mat <- cor(df[, inds, drop = FALSE], use = "complete.obs")
+        print(round(mat, 3))
+      }
     } else {
-      cat("Select >3 indices to run PCA.")
+      cat("Select at least one index.")
     }
   })
   outputOptions(output, "pca_summary", suspendWhenHidden = FALSE)
+  
+  # ── PCA tab label — switches based on index count ─────────────────────────────
+  output$pca_tab_label <- renderUI({
+    inds <- input$selected_indices
+    if (!is.null(inds) && length(inds) > 3) "PCA Summary" else "Index Summary"
+  })
+  outputOptions(output, "pca_tab_label", suspendWhenHidden = FALSE)
   
   # ── Summary statistics ────────────────────────────────────────────────────────
   output$summary_stats <- renderUI({
@@ -1240,8 +1324,7 @@ function(input, output, session) {
       session$sendCustomMessage("update_now_playing",
                                 list(info = build_now_playing(row, url)))
       updateAudio(session, url)
-      
-    } else {
+      updateAudio(session, url)
       colvar <- input$color_by
       
       if (n_inds == 1) {
@@ -1256,6 +1339,7 @@ function(input, output, session) {
         req(scores)
         pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
         pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
+        
         
         scores       <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
         clicked_time <- as.character(click$x)
@@ -1301,6 +1385,8 @@ function(input, output, session) {
           session$sendCustomMessage("update_now_playing",
                                     list(info = build_now_playing(data_clicked, url)))
           updateAudio(session, url)
+          # Set highlight coords
+          
         }
       }
     }

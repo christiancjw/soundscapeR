@@ -1070,23 +1070,22 @@ fluidPage(
                       
                       # ── Bottom-left tabs ────────────────────────────────────────────
                       div(class = "bl-tabs",
-                          div(class = "bl-tab active", "PCA Summary",
+                          div(class = "bl-tab active", uiOutput("pca_tab_label"),
                               onclick = "switchBLTab('pca')"),
                           div(class = "bl-tab", "Summary Stats",
                               onclick = "switchBLTab('stats')")
                       ),
                       
                       div(id = "bl_pca", class = "bl-panel active",
-                          div(style = "display:flex; justify-content:space-between;
-                           align-items:center; margin-bottom:6px;",
-                              span(style = "font-size:10px; color:#aaa; letter-spacing:0.04em;",
-                                   "PCA summary"),
-                              downloadButton("download_pca", "Export",
-                                             class = "btn-sm",
-                                             style = "font-size:9px; padding:2px 8px;
-                                        height:auto; line-height:1.4;")
-                          ),
-                          verbatimTextOutput("pca_summary")
+                          div(style = "position:relative;",
+                              div(style = "position:absolute; top:0; right:0; z-index:2;",
+                                  downloadButton("download_pca", "Export PCA",
+                                                 class = "btn-sm",
+                                                 style = "font-size:9px; padding:2px 8px;
+                                          height:auto; line-height:1.4;")
+                              ),
+                              verbatimTextOutput("pca_summary")
+                          )
                       ),
                       
                       div(id = "bl_stats", class = "bl-panel",
