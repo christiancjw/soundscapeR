@@ -1,3 +1,43 @@
+// ── Fixed-position tooltip for .help-tip elements ────────────────────────────
+(function() {
+  var tip = null;
+
+  document.addEventListener('mouseover', function(e) {
+    var el = e.target.closest('[data-tip]');
+    if (!el) return;
+    if (!tip) tip = document.getElementById('soundscape-tooltip');
+    if (!tip) return;
+    tip.textContent = el.getAttribute('data-tip');
+    tip.style.display = 'block';
+    positionTip(e);
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!tip || tip.style.display === 'none') return;
+    positionTip(e);
+  });
+
+  document.addEventListener('mouseout', function(e) {
+    var el = e.target.closest('[data-tip]');
+    if (!el) return;
+    if (!tip) return;
+    tip.style.display = 'none';
+  });
+
+  function positionTip(e) {
+    var x = e.clientX + 14;
+    var y = e.clientY - 10;
+    var w = tip.offsetWidth  || 220;
+    var h = tip.offsetHeight || 40;
+    // Keep within viewport
+    if (x + w > window.innerWidth  - 8) x = e.clientX - w - 14;
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - 4;
+    if (y < 4) y = 4;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }
+})();
+
 // ── Dark mode ────────────────────────────────────────────────────────────────
 function toggleDark() {
   var body = document.body;

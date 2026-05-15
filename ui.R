@@ -1,3 +1,9 @@
+# Helper — renders a ? tooltip span
+tip <- function(text, left = FALSE) {
+  cls <- if (left) "help-tip tip-left" else "help-tip"
+  tags$span(class = cls, `data-tip` = text, "?")
+}
+
 fluidPage(
   useShinyjs(),
   
@@ -783,6 +789,42 @@ fluidPage(
 
       .hidden { display: none; }
 
+      /* ── Help tooltips — rendered via JS in fixed position ─────────────── */
+      .help-tip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 1px solid var(--text-faint, #aaa);
+        color: var(--text-faint, #aaa);
+        font-size: 8px;
+        font-weight: 600;
+        cursor: default;
+        margin-left: 4px;
+        flex-shrink: 0;
+        vertical-align: middle;
+        line-height: 1;
+      }
+
+      #soundscape-tooltip {
+        position: fixed;
+        background: var(--bg-card, #1c1c1f);
+        color: var(--text-primary, #f0f0f0);
+        border: 0.5px solid var(--border, #3a3a3e);
+        border-radius: 5px;
+        padding: 5px 8px;
+        font-size: 10px;
+        line-height: 1.4;
+        white-space: normal;
+        max-width: 220px;
+        pointer-events: none;
+        z-index: 99999;
+        display: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      }
+
       /* Accent buttons */
       .btn-accent {
         background: var(--accent) !important;
@@ -896,7 +938,9 @@ fluidPage(
                   
                   # ── Acoustic indices ──────────────────────────────────────────────
                   div(class = "filter-header",
-                      span(class = "s-label", style = "margin:0;", "Acoustic indices"),
+                      span(class = "s-label", style = "margin:0; display:flex; align-items:center;",
+                           "Acoustic indices",
+                           tip("Select which indices to analyse. 1-3 plots directly; 4+ runs PCA to create compound indices.")),
                       div(class = "filter-header-links",
                           tags$button(class = "filter-link", onclick = "selectAllIndices()", "all"),
                           tags$button(class = "filter-link none", onclick = "deselectAllIndices()", "none")
@@ -908,7 +952,10 @@ fluidPage(
                   ),
                   
                   # ── Plot type ─────────────────────────────────────────────────────
-                  span(class = "s-label", "Plot type"),
+                  span(class = "s-label", style = "display:flex; align-items:center;",
+                       "Plot type",
+                       tip("Available plot types depend on how many indices are selected and whether date/time data is enabled.")
+                  ),
                   uiOutput("plot_type_ui"),
                   
                   # ── PCA axes — uiOutput to avoid duplicate IDs ──────────────────
@@ -918,7 +965,10 @@ fluidPage(
                   conditionalPanel(
                     condition = "input.plot_type == 'Diel Line 2D' ||
                          input.plot_type == 'Diel Line 3D'",
-                    span(class = "s-label", "Time bin size"),
+                    span(class = "s-label", style = "display:flex; align-items:center;",
+                         "Time bin size",
+                         tip("Time resolution for diel plots. Smaller bins show finer temporal detail but may be noisier.")
+                    ),
                     sliderInput("diel_bin_mins", label = NULL,
                                 min = 5, max = 360, value = 30,
                                 step = 5, ticks = FALSE, width = "100%"),
@@ -926,7 +976,10 @@ fluidPage(
                   ),
                   
                   # ── Colour by ─────────────────────────────────────────────────────
-                  span(class = "s-label", "Colour by"),
+                  span(class = "s-label", style = "display:flex; align-items:center;",
+                       "Colour by",
+                       tip("Choose which metadata column colours the datapoints.")
+                  ),
                   selectInput("color_by", label = NULL, choices = NULL, width = "100%"),
                   
                   # ── Compute ───────────────────────────────────────────────────────
@@ -935,7 +988,10 @@ fluidPage(
                   # ── Dataframe selection ───────────────────────────────────────────
                   tags$div(class = "section-divider", id = "df_header",
                            onclick = "toggleSection('df_header','df_body')",
-                           "Dataframe selection",
+                           div(style = "display:flex; align-items:center; gap:4px;",
+                               "Dataframe selection",
+                               tip("Filter which recordings are included in the PCA computation. Changes here require recomputing.")
+                           ),
                            span(class = "collapse-arrow", "▾")
                   ),
                   div(id = "df_body", class = "collapsible-section",
@@ -963,7 +1019,10 @@ fluidPage(
                   # ── Plotting selection ────────────────────────────────────────────
                   tags$div(class = "section-divider", id = "plot_header",
                            onclick = "toggleSection('plot_header','plot_body')",
-                           "Plotting selection",
+                           div(style = "display:flex; align-items:center; gap:4px;",
+                               "Plotting selection",
+                               tip("Filter which recordings are shown on the plot. Does not recompute PCA — use to compare subsets.")
+                           ),
                            span(class = "collapse-arrow", "▾")
                   ),
                   div(id = "plot_body", class = "collapsible-section",
@@ -1047,11 +1106,13 @@ fluidPage(
                               div(id = "now_playing_btn_col",
                                   tags$button(
                                     id = "play_pause_btn", class = "vol-btn",
-                                    HTML('<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 10,6 2,11"/></svg>')
+                                    `data-tip` = "Play / Pause",
+                                    HTML('<svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor"><polygon points="2,1 10,6 2,11"/></svg>')
                                   ),
                                   tags$button(
                                     id = "open_file_btn", class = "vol-btn",
-                                    HTML('<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="10" height="8" rx="1"/><path d="M1 5h10M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/></svg>')
+                                    `data-tip` = "Reveal in Finder / Explorer",
+                                    HTML('<svg width="15" height="15" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="10" height="8" rx="1"/><path d="M1 5h10M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/></svg>')
                                   )
                               ),
                               
@@ -1070,7 +1131,10 @@ fluidPage(
                       
                       # ── Bottom-left tabs ────────────────────────────────────────────
                       div(class = "bl-tabs",
-                          div(class = "bl-tab active", uiOutput("pca_tab_label"),
+                          div(class = "bl-tab active",
+                              style = "display:flex; align-items:center; gap:3px;",
+                              `data-tip` = "Shows variance explained and loadings for PCA mode, or descriptive statistics for direct index mode.",
+                              uiOutput("pca_tab_label"),
                               onclick = "switchBLTab('pca')"),
                           div(class = "bl-tab", "Summary Stats",
                               onclick = "switchBLTab('stats')")
@@ -1079,10 +1143,12 @@ fluidPage(
                       div(id = "bl_pca", class = "bl-panel active",
                           div(style = "position:relative;",
                               div(style = "position:absolute; top:0; right:0; z-index:2;",
-                                  downloadButton("download_pca", "Export PCA",
-                                                 class = "btn-sm",
-                                                 style = "font-size:9px; padding:2px 8px;
-                                          height:auto; line-height:1.4;")
+                                  tags$span(`data-tip` = "Download PC scores joined to your metadata as a CSV.",
+                                            downloadButton("download_pca", "Export PCA",
+                                                           class = "btn-sm",
+                                                           style = "font-size:9px; padding:2px 8px;
+                                            height:auto; line-height:1.4;")
+                                  )
                               ),
                               verbatimTextOutput("pca_summary")
                           )
@@ -1104,5 +1170,6 @@ fluidPage(
       )
   ),
   
-  tags$script(src = "js/soundscapeR.js")
+  tags$script(src = "js/soundscapeR.js"),
+  tags$div(id = "soundscape-tooltip")
 )

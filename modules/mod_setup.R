@@ -56,7 +56,8 @@ setupServer <- function(id, active_config) {
                 tags$label(`for` = ns("use_datetime"),
                            style = "font-size:11px; color:#555;
                                   cursor:pointer; margin:0; user-select:none;",
-                           "Use date & time data")
+                           "Use date & time data"),
+                tags$span(class = "help-tip", `data-tip` = "Enable to use date and time columns for diel plots and temporal filtering. Disable if your data has no temporal information.", "?")
             ),
             
             conditionalPanel(
@@ -70,9 +71,9 @@ setupServer <- function(id, active_config) {
                        selectInput(ns("date_col"), label = NULL,
                                    choices = NULL, multiple = FALSE, width = "100%"),
                        uiOutput(ns("date_preview")),
-                       div(style = "font-size: 11px; color: #888;
-                               margin-top: 6px; margin-bottom: 3px;",
-                           "Date format"),
+                       div(style = "font-size: 11px; color: #888; margin-top: 6px; margin-bottom: 3px;
+                               display:flex; align-items:center; gap:4px;",
+                           "Date format", tags$span(class = "help-tip", `data-tip` = "Select the format your date column is stored in. Check the preview below to confirm.", "?")),
                        selectInput(ns("date_format"), label = NULL, width = "100%",
                                    choices = c(
                                      "YYYYMMDD (integer)"    = "YYYYMMDD",
@@ -96,9 +97,9 @@ setupServer <- function(id, active_config) {
                          selectInput(ns("time_col"), label = NULL,
                                      choices = NULL, multiple = FALSE, width = "100%"),
                          uiOutput(ns("time_preview")),
-                         div(style = "font-size: 11px; color: #888;
-                                 margin-top: 6px; margin-bottom: 3px;",
-                             "Time format"),
+                         div(style = "font-size: 11px; color: #888; margin-top: 6px; margin-bottom: 3px;
+                                 display:flex; align-items:center; gap:4px;",
+                             "Time format", tags$span(class = "help-tip", `data-tip` = "Select the format your time column is stored in.", "?")),
                          selectInput(ns("time_format"), label = NULL, width = "100%",
                                      choices = c(
                                        "HHMMSS (integer)"      = "HHMMSS",
@@ -116,14 +117,16 @@ setupServer <- function(id, active_config) {
             
             fluidRow(
               column(4,
-                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                         "Index columns"),
+                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;
+                               display:flex; align-items:center; gap:4px;",
+                         "Index columns", tags$span(class = "help-tip", `data-tip` = "Select numeric acoustic index columns. Selecting 4 or more enables PCA compound index analysis.", "?")),
                      selectInput(ns("index_cols"), label = NULL,
                                  choices = NULL, multiple = TRUE, width = "100%")
               ),
               column(4,
-                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                         "Metadata columns"),
+                     div(style = "font-size: 11px; color: #888; margin-bottom: 3px;
+                               display:flex; align-items:center; gap:4px;",
+                         "Metadata columns", tags$span(class = "help-tip", `data-tip` = "Categorical columns used for grouping, filtering, and colouring. Exclude date and time columns.", "?")),
                      div(style = "font-size: 10px; color: #aaa; margin-bottom: 3px;",
                          "exclude date & time columns"),
                      selectInput(ns("meta_cols"), label = NULL,
@@ -162,8 +165,9 @@ setupServer <- function(id, active_config) {
               condition = paste0("input['", ns("audio_path_mode"),
                                  "'] == 'folder_structure'"),
               div(style = "margin-top: 8px;",
-                  div(style = "font-size: 11px; color: #888; margin-bottom: 3px;",
-                      "Folder pattern — use {ColumnName} tokens"),
+                  div(style = "font-size: 11px; color: #888; margin-bottom: 3px;
+                               display:flex; align-items:center; gap:4px;",
+                      "Folder pattern", tags$span(class = "help-tip", `data-tip` = "Use {ColumnName} tokens matching your CSV columns to describe your audio folder layout. e.g. {Site}/{Device}/{Date}", "?")),
                   textInput(ns("folder_structure"), label = NULL,
                             value = "{Site}/{Device}/{Date}", width = "100%"),
                   div(style = "font-size: 10px; color: #aaa; margin-top: 3px;",
@@ -186,8 +190,11 @@ setupServer <- function(id, active_config) {
             div(class = "setup-card-title", "Step 3 — Save and apply"),
             fluidRow(
               column(6,
-                     actionButton(ns("link_files"), "Test links",
-                                  class = "btn-sm btn-accent", width = "100%")
+                     div(style = "display:flex; align-items:center; gap:6px;",
+                         actionButton(ns("link_files"), "Test links",
+                                      class = "btn-sm btn-accent", width = "100%"),
+                         tags$span(class = "help-tip", `data-tip` = "Samples up to 200 recordings to verify SoundscapeR can locate your audio files.", "?")
+                     )
               ),
               column(6,
                      actionButton(ns("apply"), "Save & Apply",
@@ -399,7 +406,7 @@ setupServer <- function(id, active_config) {
                    margin-top: 3px; font-family: monospace;
                    white-space: nowrap; overflow: hidden;
                    text-overflow: ellipsis;",
-          paste0("Preview:“", val, "”"))
+          paste0("e.g. “", val, "”"))
     }
     
     output$date_preview <- renderUI({

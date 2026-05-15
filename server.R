@@ -276,8 +276,8 @@ function(input, output, session) {
       else        c("Boxplot")
       
     } else if (n == 2) {
-      # 2 indices: adds scatter 2D, index correlation
-      if (use_dt) c("Scatter 2D", "Diel Line 2D", "Boxplot", "Index Correlation")
+      # 2 indices: scatter 2D, diel 2D/3D, boxplot, correlation
+      if (use_dt) c("Scatter 2D", "Diel Line 2D", "Diel Line 3D", "Boxplot", "Index Correlation")
       else        c("Scatter 2D", "Boxplot", "Index Correlation")
       
     } else {
@@ -551,6 +551,37 @@ function(input, output, session) {
   # ── Now playing builder ───────────────────────────────────────────────────────
   build_now_playing <- function(row, url) {
     meta_cols <- cache_meta_cols()
+    date_col  <- cache_date_col()
+    time_col  <- cache_time_col()
+    use_dt    <- cache_use_datetime()
+    
+    # Date / time formatted display
+    datetime_items <- if (use_dt) {
+      items <- c()
+      if (date_col %in% colnames(row)) {
+        d_raw <- row[[date_col]][1]
+        d_fmt <- tryCatch(
+          format(as.Date(as.character(d_raw), "%Y%m%d"), "%d %b %Y"),
+          error = function(e) as.character(d_raw)
+        )
+        items <- c(items, paste0(
+          "<div style='white-space:nowrap;'>",
+          "<span style='color:#bbb;'>Date:</span> ", d_fmt, "</div>"
+        ))
+      }
+      if (time_col %in% colnames(row)) {
+        t_raw <- row[[time_col]][1]
+        t_fmt <- tryCatch({
+          t_str <- sprintf("%06d", as.integer(t_raw))
+          paste0(substr(t_str, 1, 2), ":", substr(t_str, 3, 4), ":", substr(t_str, 5, 6))
+        }, error = function(e) as.character(t_raw))
+        items <- c(items, paste0(
+          "<div style='white-space:nowrap;'>",
+          "<span style='color:#bbb;'>Time:</span> ", t_fmt, "</div>"
+        ))
+      }
+      items
+    } else character(0)
     
     meta_items <- sapply(meta_cols, function(col) {
       if (!col %in% colnames(row)) return(NULL)
@@ -591,7 +622,10 @@ function(input, output, session) {
       basename(url), "</div>",
       "<div style='display:grid; grid-template-columns:1fr 1fr; gap:0 10px;",
       " font-size:10px; line-height:1.5;'>",
-      "<div>", paste(Filter(Negate(is.null), meta_items),  collapse = ""), "</div>",
+      "<div>",
+      paste(datetime_items, collapse = ""),
+      paste(Filter(Negate(is.null), meta_items), collapse = ""),
+      "</div>",
       "<div>", paste(Filter(Negate(is.null), value_items), collapse = ""), "</div>",
       "</div>"
     )
@@ -789,25 +823,94 @@ function(input, output, session) {
     bin_mins <- if (!is.null(input$diel_bin_mins)) input$diel_bin_mins else 30
     
     if (n_inds == 1) {
-      p <- plot_ly(data,
-                   x = ~color_vec, y = data[[inds[1]]],
-                   type = "box", color = color_vec, colors = pal,
-                   hovertemplate = paste0(colvar, ": %{x}<br>",
-                                          inds[1], ": %{y}<extra></extra>"))
+      idx <- inds[1]
+      
+      if (pt == "Diel Line 2D") {
+        scores <- add_time_bins(data, plot_tr, bin_mins = bin_mins)
+        avg <- scores %>%
+          group_by(Time_label, Time_bin, !!sym(colvar)) %>%
+          summarise(mean_val = mean(.data[[idx]], na.rm = TRUE), .groups = "drop")
+        avg$hover <- make_text_diel_2d(avg, idx, colvar)
+        p <- plot_ly(avg,
+                     x = ~Time_label, y = ~mean_val,
+                     type = "scatter", mode = "lines+markers",
+                     line = list(shape = "spline"),
+                     marker = list(size = 4),
+                     color = avg[[colvar]], colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
+          layout(xaxis = list(title = "Time of day"),
+                 yaxis = list(title = idx))
+      } else {
+        # Boxplot (default for n=1)
+        p <- plot_ly(data,
+                     x = ~color_vec, y = data[[idx]],
+                     type = "box", color = color_vec, colors = pal,
+                     hovertemplate = paste0(colvar, ": %{x}<br>",
+                                            idx, ": %{y}<extra></extra>")) %>%
+          layout(yaxis = list(title = idx),
+                 xaxis = list(title = colvar))
+      }
       
     } else if (n_inds == 2) {
-      data$hover <- make_text_2d(data, inds[1], inds[2],
-                                 colvar, date_col, "Time_fmt")
-      p <- plot_ly(data,
-                   x = data[[inds[1]]], y = data[[inds[2]]],
-                   type = "scatter", mode = "markers",
-                   marker = list(size = 2),
-                   color = color_vec, colors = pal,
-                   text = ~hover,
-                   hovertemplate = "%{text}<extra></extra>",
-                   key = if (has_audio) ~.row_key else NULL) %>%
-        layout(xaxis = list(title = inds[1]),
-               yaxis = list(title = inds[2]))
+      if (pt == "Diel Line 2D") {
+        scores <- add_time_bins(data, plot_tr, bin_mins = bin_mins)
+        avg <- scores %>%
+          group_by(Time_label, Time_bin, !!sym(colvar)) %>%
+          summarise(mean_val = mean(.data[[inds[1]]], na.rm = TRUE), .groups = "drop")
+        avg$hover <- make_text_diel_2d(avg, inds[1], colvar)
+        p <- plot_ly(avg,
+                     x = ~Time_label, y = ~mean_val,
+                     type = "scatter", mode = "lines+markers",
+                     line = list(shape = "spline"),
+                     marker = list(size = 4),
+                     color = avg[[colvar]], colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
+          layout(xaxis = list(title = "Time of day"),
+                 yaxis = list(title = inds[1]))
+      } else if (pt == "Diel Line 3D") {
+        scores <- add_time_bins(data, plot_tr, bin_mins = bin_mins)
+        avg <- scores %>%
+          group_by(Time_bin, Time_label, !!sym(colvar)) %>%
+          summarise(mean_y = mean(.data[[inds[1]]], na.rm = TRUE),
+                    mean_z = mean(.data[[inds[2]]], na.rm = TRUE),
+                    .groups = "drop") %>%
+          arrange(Time_bin)
+        avg$hover <- make_text_diel_3d(avg, inds[1], inds[2], colvar)
+        p <- plot_ly(avg,
+                     x = ~Time_label, y = ~mean_y, z = ~mean_z,
+                     type = "scatter3d", mode = "lines+markers",
+                     marker = list(size = 2),
+                     color = avg[[colvar]], colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>") %>%
+          layout(scene = list(xaxis = list(title = "Time of day"),
+                              yaxis = list(title = inds[1]),
+                              zaxis = list(title = inds[2])))
+      } else if (pt == "Boxplot") {
+        p <- plot_ly(data,
+                     x = ~color_vec, y = data[[inds[1]]],
+                     type = "box", color = color_vec, colors = pal,
+                     hovertemplate = paste0(colvar, ": %{x}<br>",
+                                            inds[1], ": %{y}<extra></extra>")) %>%
+          layout(yaxis = list(title = inds[1]),
+                 xaxis = list(title = colvar))
+      } else {
+        # Scatter 2D or Index Correlation (default scatter)
+        data$hover <- make_text_2d(data, inds[1], inds[2],
+                                   colvar, date_col, "Time_fmt")
+        p <- plot_ly(data,
+                     x = data[[inds[1]]], y = data[[inds[2]]],
+                     type = "scatter", mode = "markers",
+                     marker = list(size = 2),
+                     color = color_vec, colors = pal,
+                     text = ~hover,
+                     hovertemplate = "%{text}<extra></extra>",
+                     key = if (has_audio) ~.row_key else NULL) %>%
+          layout(xaxis = list(title = inds[1]),
+                 yaxis = list(title = inds[2]))
+      }
       
     } else if (n_inds == 3) {
       data$hover <- make_text_3d(data, inds[1], inds[2], inds[3],
@@ -1310,6 +1413,7 @@ function(input, output, session) {
     bin_mins     <- if (!is.null(input$diel_bin_mins)) input$diel_bin_mins else 30
     
     if (!is.null(click$key)) {
+      # ── Key-based: scatter plots — key identifies exact row ──────────────────
       composite_key <- click$key
       if (is.null(composite_key) || is.na(composite_key) ||
           composite_key == "NA") return()
@@ -1324,58 +1428,79 @@ function(input, output, session) {
       session$sendCustomMessage("update_now_playing",
                                 list(info = build_now_playing(row, url)))
       updateAudio(session, url)
-      updateAudio(session, url)
-      colvar <- input$color_by
       
-      if (n_inds == 1) {
-        group_data   <- plot_data() %>% filter(.data[[colvar]] == click$x)
-        index_name   <- inds[1]
-        data_clicked <- group_data[
-          which.min(abs(group_data[[index_name]] - as.numeric(click$y))), ]
-        
-      } else if (n_inds > 3 &&
-                 input$plot_type %in% c("Diel Line 2D", "Diel Line 3D")) {
-        scores <- plot_data()
-        req(scores)
-        pcy <- if (!is.null(input$pca_y)) input$pca_y else "PC1"
-        pcz <- if (!is.null(input$pca_z)) input$pca_z else "PC2"
-        
-        
-        scores       <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
+    } else {
+      # ── Non-key: boxplots and diel plots — trace colour → time → closest value
+      colvar <- input$color_by
+      pt     <- input$plot_type
+      
+      # ── Helper: diel 2D click logic ──────────────────────────────────────────
+      find_diel_2d <- function(scores, idx_col) {
         clicked_time <- as.character(click$x)
         candidates   <- scores %>% filter(Time_label == clicked_time)
-        if (nrow(candidates) == 0) return()
+        if (nrow(candidates) == 0) return(NULL)
+        # 1. Find which colour group's mean is closest to click$y
+        avg <- candidates %>%
+          group_by(!!sym(colvar)) %>%
+          summarise(mean_val = mean(.data[[idx_col]], na.rm = TRUE), .groups = "drop")
+        clicked_group <- avg[[colvar]][which.min(abs(avg$mean_val - as.numeric(click$y)))]
+        # 2. Within that group+time, find closest individual recording
+        cands <- candidates %>%
+          filter(.data[[colvar]] == clicked_group) %>%
+          mutate(.dist = abs(.data[[idx_col]] - as.numeric(click$y)))
+        if (nrow(cands) == 0) return(NULL)
+        cands[which.min(cands$.dist), ]
+      }
+      
+      # ── Helper: boxplot click logic ───────────────────────────────────────────
+      find_boxplot <- function(df, idx_col) {
+        # click$x is the colour group label
+        group_data <- df %>% filter(.data[[colvar]] == as.character(click$x))
+        if (nrow(group_data) == 0) return(NULL)
+        # Find closest value to click$y within that group
+        group_data %>%
+          mutate(.dist = abs(.data[[idx_col]] - as.numeric(click$y))) %>%
+          slice(which.min(.dist))
+      }
+      
+      # ── Route by plot type and index count ───────────────────────────────────
+      if (pt == "Boxplot") {
+        idx_col <- if (n_inds >= 1) {
+          if (n_inds <= 3) inds[1]
+          else if (!is.null(input$pca_y)) input$pca_y else "PC1"
+        } else return()
+        df_box <- if (n_inds > 3) plot_data() else plot_data()
+        data_clicked <- find_boxplot(df_box, idx_col)
         
-        if (input$plot_type == "Diel Line 2D") {
-          avg_at_time <- candidates %>%
-            group_by(!!sym(colvar)) %>%
-            summarise(mean_val = mean(.data[[pcy]], na.rm = TRUE), .groups = "drop")
-          clicked_group <- avg_at_time[[colvar]][
-            which.min(abs(avg_at_time$mean_val - as.numeric(click$y)))]
-        } else {
-          avg_at_time <- candidates %>%
-            group_by(!!sym(colvar)) %>%
-            summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
-                      mean_z = mean(.data[[pcz]], na.rm = TRUE),
-                      .groups = "drop")
-          dists <- (avg_at_time$mean_y - as.numeric(click$y))^2 +
-            (avg_at_time$mean_z - as.numeric(click$z))^2
-          clicked_group <- avg_at_time[[colvar]][which.min(dists)]
-        }
+      } else if (pt == "Diel Line 2D") {
+        idx_col <- if (n_inds <= 3) inds[1]
+        else if (!is.null(input$pca_y)) input$pca_y else "PC1"
+        scores <- if (n_inds > 3) plot_data() else plot_data()
+        scores <- add_time_bins(scores, plot_tr, bin_mins = bin_mins)
+        data_clicked <- find_diel_2d(scores, idx_col)
         
-        group_candidates <- candidates %>% filter(.data[[colvar]] == clicked_group)
-        
-        if (nrow(group_candidates) > 0) {
-          group_candidates <- if (input$plot_type == "Diel Line 2D") {
-            group_candidates %>%
-              mutate(.dist = abs(.data[[pcy]] - as.numeric(click$y)))
-          } else {
-            group_candidates %>%
-              mutate(.dist = (.data[[pcy]] - as.numeric(click$y))^2 +
-                       (.data[[pcz]] - as.numeric(click$z))^2)
-          }
-          data_clicked <- group_candidates[which.min(group_candidates$.dist), ]
-        }
+      } else if (pt == "Diel Line 3D") {
+        # Y-Z proximity — click$x is unreliable in 3D categorical axes
+        pcy <- if (n_inds <= 3) inds[1]
+        else if (!is.null(input$pca_y)) input$pca_y else "PC1"
+        pcz <- if (n_inds <= 3 && n_inds >= 2) inds[2]
+        else if (!is.null(input$pca_z)) input$pca_z else "PC2"
+        scores <- add_time_bins(plot_data(), plot_tr, bin_mins = bin_mins)
+        all_avg <- scores %>%
+          group_by(Time_bin, Time_label, !!sym(colvar)) %>%
+          summarise(mean_y = mean(.data[[pcy]], na.rm = TRUE),
+                    mean_z = mean(.data[[pcz]], na.rm = TRUE),
+                    .groups = "drop")
+        dists      <- (all_avg$mean_y - as.numeric(click$y))^2 +
+          (all_avg$mean_z - as.numeric(click$z))^2
+        best       <- all_avg[which.min(dists), ]
+        best_group <- best[[colvar]][1]
+        best_time  <- best$Time_label[1]
+        cands      <- scores %>%
+          filter(.data[[colvar]] == best_group, Time_label == best_time) %>%
+          mutate(.dist = (.data[[pcy]] - as.numeric(click$y))^2 +
+                   (.data[[pcz]] - as.numeric(click$z))^2)
+        if (nrow(cands) > 0) data_clicked <- cands[which.min(cands$.dist), ]
       }
       
       if (!is.null(data_clicked) && nrow(data_clicked) > 0) {
@@ -1385,8 +1510,6 @@ function(input, output, session) {
           session$sendCustomMessage("update_now_playing",
                                     list(info = build_now_playing(data_clicked, url)))
           updateAudio(session, url)
-          # Set highlight coords
-          
         }
       }
     }
