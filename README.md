@@ -63,7 +63,7 @@ SoundscapeR/
 Place your CSV dataset into `Your_Project/raw_data/`, then select the project from the sidebar dropdown and click **Open project**.
 
 ### 2. Setup
-![[SoundscapeR/figures/setup_overview.png]]
+![Setup tab overview](Figures/setup_overview.png)
 #### Step 1 — Map your columns
 
 Select which columns in your CSV correspond to recording filenames, acoustic indices, metadata, dates, and times. 
@@ -99,7 +99,7 @@ SoundscapeR launches in dark mode by default. Click the **☽ / ☀** button at 
 ### Analysis Tab
 Switch to the **Analysis** tab on the top left corner of the application window to start data exploration. SoundscapeR allows subsetting of your data for both analyses and plotting , with summary statistics for full analyses, as well as audio waveform and spectrogram generation for understanding of acoustic data drivers. 
 
-![[SoundscapeR/figures/analysis_overview.png]]
+![Analysis tab overview](Figures/analysis_overview.png)
 
 #### A — Sidebar
 
