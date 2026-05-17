@@ -1,5 +1,7 @@
 # SoundscapeR  
   
+**Interactive analysis and visualisation for acoustic indices**
+  
 Hello! Here is a R Shiny app for exploring, visualising, and analysing acoustic indices datasets. The application provides an interactive, audio-enabled interface for investigating  soundscape or other acoustic data through:  
   
 - Compound index analysis - combine multiple acoustic indices into PCA-derived compound indices to capture broader patterns in soundscape structure that no single index can reveal alone
