@@ -171,10 +171,10 @@ Use one of the following free tools to extract acoustic indices from your audio 
 
 |Tool|Type|Notes|
 |---|---|---|
+|[QUT Ecoacoustics Analysis Programs](https://ap.qut.ecoacoustics.info/)|Desktop app / Python | Open source |
 |[soundecology](https://cran.r-project.org/package=soundecology)|R package|ACI, NDSI, NP, BI, ADI|
 |[seewave](https://rug.mnhn.fr/seewave/)|R package|General acoustic analysis|
 |[Kaleidoscope](https://www.wildlifeacoustics.com/products/kaleidoscope-pro)|Desktop app|Free version available|
-|[QUT Ecoacoustics](https://ap.qut.ecoacoustics.info/)|Desktop app / CLI|Open source|
 
 Each of these tools will produce a results file (usually a CSV) containing one row per recording and one column per index.
 
